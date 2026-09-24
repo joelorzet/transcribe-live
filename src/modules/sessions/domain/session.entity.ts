@@ -2,6 +2,7 @@ import type { LanguageCode, SourceLanguage } from '@shared/language/language';
 import { InvalidSessionStateError } from '@modules/sessions/domain/session.errors';
 import { LatencyWindow, type LatencySnapshot } from '@modules/sessions/domain/latency';
 import { TrackOutput, type OutputSnapshot } from '@modules/sessions/domain/track-output.entity';
+import type { InputDescriptor } from '@shared/input/input-registry';
 
 export type SessionStatus = 'starting' | 'live' | 'ended' | 'error';
 
@@ -35,6 +36,7 @@ export interface SessionSnapshot {
   sourceLanguage: SourceLanguage;
   targetLanguages: LanguageCode[];
   outputs: OutputSnapshot[];
+  input: InputDescriptor | null;
   glossaryId: string;
   createdAt: number;
   startedAt?: number;
@@ -145,7 +147,11 @@ export class Session {
     return this.audioMs / 1000;
   }
 
-  toSnapshot(cost: SessionCost, outputSnapshots: OutputSnapshot[] = []): SessionSnapshot {
+  toSnapshot(
+    cost: SessionCost,
+    outputSnapshots: OutputSnapshot[] = [],
+    input: InputDescriptor | null = null,
+  ): SessionSnapshot {
     return {
       id: this.id,
       title: this.title,
@@ -153,6 +159,7 @@ export class Session {
       sourceLanguage: this.sourceLanguage,
       targetLanguages: this.targetLanguages,
       outputs: outputSnapshots,
+      input,
       glossaryId: this.glossaryId,
       createdAt: this.createdAt,
       startedAt: this.startedAt,

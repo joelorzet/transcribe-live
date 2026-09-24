@@ -18,6 +18,7 @@ import type { GlossaryRepositoryPort } from '@modules/glossary/application/ports
 import type { EventPublisherPort } from '@modules/events/application/ports/event-publisher.port';
 import type { ClockPort, LoggerPort } from '@shared/ports/system.port';
 import type { CostEstimator } from '@modules/sessions/application/cost-estimator.service';
+import type { InputRegistry } from '@shared/input/input-registry';
 
 export interface LiveSessionServiceOptions {
   engine: TranscriptionEnginePort;
@@ -33,6 +34,7 @@ export interface LiveSessionServiceOptions {
   transcriptionMode: TranscriptionMode;
   contextWindow: number;
   autoDetectLanguages: LanguageCode[];
+  inputRegistry: InputRegistry;
 }
 
 interface RunningSession {
@@ -197,8 +199,12 @@ export class LiveSessionService {
 
   snapshot(session: Session): SessionSnapshot {
     session.viewers = this.#opts.publisher.subscriberCount(session.id);
-    const { costEstimator } = this.#opts;
-    return session.toSnapshot(costEstimator.estimate(session), costEstimator.outputSnapshots(session));
+    const { costEstimator, inputRegistry } = this.#opts;
+    return session.toSnapshot(
+      costEstimator.estimate(session),
+      costEstimator.outputSnapshots(session),
+      inputRegistry.get(session.id) ?? null,
+    );
   }
 
   async changeSourceLanguage(sessionId: string, sourceLanguage: SourceLanguage): Promise<SessionSnapshot> {

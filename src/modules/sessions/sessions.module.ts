@@ -18,7 +18,9 @@ import {
   TRANSCRIPT_STORE,
   TRANSCRIPTION_ENGINE,
   TRANSLATOR,
+  INPUT_REGISTRY,
 } from '@shared/tokens';
+import type { InputRegistry } from '@shared/input/input-registry';
 import type { AppConfig } from '@shared/config/env';
 import type { ClockPort, LoggerPort } from '@shared/ports/system.port';
 import type { SessionRepositoryPort } from '@modules/sessions/application/ports/session.repository.port';
@@ -51,6 +53,7 @@ import type { EventPublisherPort } from '@modules/events/application/ports/event
         clock: ClockPort,
         logger: LoggerPort,
         config: AppConfig,
+        inputRegistry: InputRegistry,
       ): LiveSessionService =>
         new LiveSessionService({
           engine,
@@ -66,6 +69,7 @@ import type { EventPublisherPort } from '@modules/events/application/ports/event
           transcriptionMode: config.transcriptionMode,
           contextWindow: config.contextWindow,
           autoDetectLanguages: config.autoDetectLanguages,
+          inputRegistry,
         }),
       inject: [
         TRANSCRIPTION_ENGINE,
@@ -78,6 +82,7 @@ import type { EventPublisherPort } from '@modules/events/application/ports/event
         CLOCK,
         LOGGER,
         APP_CONFIG,
+        INPUT_REGISTRY,
       ],
     },
   ],

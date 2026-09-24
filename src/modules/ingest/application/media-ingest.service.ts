@@ -10,6 +10,7 @@ import type { PcmStream } from '@shared/media/media-source';
 import { LiveSessionService } from '@modules/sessions/application/live-session.service';
 import { DomainError } from '@shared/errors/domain.errors';
 import type { LoggerPort } from '@shared/ports/system.port';
+import type { InputRegistry } from '@shared/input/input-registry';
 
 export class MediaIngestError extends DomainError {
   constructor(message: string) {
@@ -58,6 +59,7 @@ export class MediaIngestService {
     private readonly live: LiveSessionService,
     private readonly logger: LoggerPort,
     private readonly rtmp: RtmpEndpointOptions,
+    private readonly registry: InputRegistry,
   ) {}
 
   async startRtmp(trackId: string, publicHost: string): Promise<IngestStatus> {
@@ -144,12 +146,25 @@ export class MediaIngestService {
       ...details,
     };
     this.#running.set(trackId, entry);
+    this.registry.set(trackId, {
+      kind: entry.kind,
+      source: entry.source,
+      secondsIngested: 0,
+      startedAt: entry.startedAt,
+      waitingForPublisher: entry.waitingForPublisher,
+      server: entry.server,
+      streamKey: entry.streamKey,
+    });
 
     stream.pcm.on('data', (chunk: Buffer) => {
       entry.waitingForPublisher = false;
       try {
         this.live.ingest(trackId, chunk);
         entry.secondsIngested += chunk.byteLength / (16000 * 2);
+        this.registry.patch(trackId, {
+          waitingForPublisher: false,
+          secondsIngested: Number(entry.secondsIngested.toFixed(1)),
+        });
       } catch {
         this.stop(trackId);
       }
@@ -177,6 +192,7 @@ export class MediaIngestService {
     const entry = this.#running.get(trackId);
     if (entry?.port) this.#usedPorts.delete(entry.port);
     this.#running.delete(trackId);
+    this.registry.clear(trackId);
   }
 
   async #resolve(source: string, log: LoggerPort): Promise<string> {

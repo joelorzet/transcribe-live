@@ -3,7 +3,8 @@ import { loadConfig } from '@shared/config/env';
 import type { AppConfig } from '@shared/config/env';
 import { ConsoleLogger } from '@shared/logging/console-logger';
 import type { ClockPort, LoggerPort } from '@shared/ports/system.port';
-import { APP_CONFIG, CLOCK, LOGGER } from '@shared/tokens';
+import { APP_CONFIG, CLOCK, INPUT_REGISTRY, LOGGER } from '@shared/tokens';
+import { InputRegistry } from '@shared/input/input-registry';
 
 @Global()
 @Module({
@@ -15,7 +16,8 @@ import { APP_CONFIG, CLOCK, LOGGER } from '@shared/tokens';
       inject: [APP_CONFIG],
     },
     { provide: CLOCK, useValue: { now: (): number => Date.now() } satisfies ClockPort },
+    { provide: INPUT_REGISTRY, useFactory: (): InputRegistry => new InputRegistry() },
   ],
-  exports: [APP_CONFIG, LOGGER, CLOCK],
+  exports: [APP_CONFIG, LOGGER, CLOCK, INPUT_REGISTRY],
 })
 export class SharedModule {}
