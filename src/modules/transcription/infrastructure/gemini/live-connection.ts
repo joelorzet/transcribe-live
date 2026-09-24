@@ -13,6 +13,7 @@ export interface LiveConnectionOptions {
   languageCodes: string[];
   vocabulary: string[];
   mode: TranscriptionMode;
+  silenceDurationMs: number;
   logger: LoggerPort;
   onInterim: (text: string, language?: LanguageCode) => void;
   onFinal: (text: string, language?: LanguageCode) => void;
@@ -92,11 +93,19 @@ export class LiveConnection {
     if (languageCodes.length > 0) inputAudioTranscription['languageCodes'] = languageCodes;
     if (vocabulary.length > 0) inputAudioTranscription['customVocabulary'] = vocabulary;
 
-    return {
+    const setup: Record<string, unknown> = {
       model: model.startsWith('models/') ? model : `models/${model}`,
       generationConfig: { responseModalities: ['TEXT'] },
       inputAudioTranscription,
     };
+
+    if (this.#opts.silenceDurationMs > 0) {
+      setup['realtimeInputConfig'] = {
+        automaticActivityDetection: { silenceDurationMs: this.#opts.silenceDurationMs },
+      };
+    }
+
+    return setup;
   }
 
   #handle(message: Record<string, any>): void {

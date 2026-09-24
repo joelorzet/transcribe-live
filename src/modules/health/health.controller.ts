@@ -17,7 +17,7 @@ export class HealthController {
       engine: this.config.engine,
       models: {
         transcription: this.config.engine === 'gemini' ? this.config.transcribeModel : 'mock',
-        translation: this.config.engine === 'gemini' ? this.config.translateModel : 'mock',
+        translation: this.config.engine === 'gemini' ? this.config.translateModels.join(', ') : 'mock',
       },
       transcriptionMode: this.config.transcriptionMode,
       running: this.live.runningCount,

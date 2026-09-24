@@ -12,7 +12,7 @@ import type { TranslatorPort } from '@modules/translation/application/ports/tran
       provide: TRANSLATOR,
       useFactory: (config: AppConfig, logger: LoggerPort): TranslatorPort =>
         config.engine === 'gemini'
-          ? new GeminiTranslator({ apiKey: config.apiKey, model: config.translateModel, logger })
+          ? new GeminiTranslator({ apiKey: config.apiKey, models: config.translateModels, logger })
           : new MockTranslator(),
       inject: [APP_CONFIG, LOGGER],
     },

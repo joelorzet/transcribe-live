@@ -17,6 +17,7 @@ async function main(): Promise<void> {
     apiKey: config.apiKey,
     model: config.transcribeModel,
     rotateSeconds: config.rotateSeconds,
+    silenceDurationMs: config.silenceDurationMs,
     logger,
   });
 

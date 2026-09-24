@@ -34,7 +34,7 @@ async function bootstrap(): Promise<void> {
     url: `http://${config.host}:${config.port}`,
     engine: config.engine,
     transcription: config.engine === 'gemini' ? config.transcribeModel : 'mock',
-    translation: config.engine === 'gemini' ? config.translateModel : 'mock',
+    translation: config.engine === 'gemini' ? config.translateModels.join(', ') : 'mock',
     capacity: config.maxConcurrentSessions,
   });
 

@@ -11,6 +11,7 @@ export interface GeminiTranscriptionConfig {
   apiKey: string;
   model: string;
   rotateSeconds: number;
+  silenceDurationMs: number;
   logger: LoggerPort;
 }
 
@@ -70,6 +71,7 @@ class RotatingTranscriptionStream implements TranscriptionStream {
       languageCodes: sourceLanguage === 'auto' ? [] : [toBcp47(sourceLanguage)],
       vocabulary,
       mode,
+      silenceDurationMs: this.#options.silenceDurationMs ?? this.#config.silenceDurationMs,
       logger: this.#log,
       onInterim: (text, language) => {
         if (!this.#closed) this.#options.onInterim({ text, language });

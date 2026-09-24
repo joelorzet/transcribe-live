@@ -12,6 +12,7 @@ export interface TranscriptionStreamOptions {
   sourceLanguage: SourceLanguage;
   vocabulary: string[];
   mode: TranscriptionMode;
+  silenceDurationMs?: number;
   onInterim: (result: TranscriptionResult) => void;
   onFinal: (result: TranscriptionResult) => void;
   onRotate?: () => void;

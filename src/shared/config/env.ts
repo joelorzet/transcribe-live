@@ -34,9 +34,10 @@ export interface AppConfig {
   engine: 'gemini' | 'mock';
   apiKey: string;
   transcribeModel: string;
-  translateModel: string;
+  translateModels: string[];
   transcriptionMode: TranscriptionMode;
   rotateSeconds: number;
+  silenceDurationMs: number;
   maxConcurrentSessions: number;
   contextWindow: number;
   costRates: CostRates;
@@ -56,9 +57,11 @@ export function loadConfig(): AppConfig {
     engine,
     apiKey,
     transcribeModel: str('TRANSCRIBE_MODEL', 'gemini-3.5-transcribe-live'),
-    translateModel: str('TRANSLATE_MODEL', 'gemini-3.8-flash'),
-    transcriptionMode: str('TRANSCRIPTION_MODE', 'SMART') === 'VERBATIM' ? 'VERBATIM' : 'SMART',
+    translateModels: str('TRANSLATE_MODEL', 'gemini-3.7-flash,gemini-3.5-flash-lite,gemini-3.8-flash')
+      .split(',').map((m) => m.trim()).filter(Boolean),
+    transcriptionMode: str('TRANSCRIPTION_MODE', 'VERBATIM') === 'SMART' ? 'SMART' : 'VERBATIM',
     rotateSeconds: num('SESSION_ROTATE_SECONDS', 480),
+    silenceDurationMs: num('SILENCE_DURATION_MS', 400),
     maxConcurrentSessions: num('MAX_CONCURRENT_SESSIONS', 16),
     contextWindow: num('CONTEXT_WINDOW', 3),
     costRates: {
