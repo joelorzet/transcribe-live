@@ -56,7 +56,7 @@ export class LiveSessionService {
   }
 
   async start(config: Omit<SessionConfig, 'id'> & { id?: string }): Promise<SessionSnapshot> {
-    const { sessions, glossaries, engine, clock, logger, publisher, maxConcurrentSessions } = this.#opts;
+    const { sessions, clock, logger, publisher, maxConcurrentSessions } = this.#opts;
 
     if (this.#running.size >= maxConcurrentSessions) {
       throw new CapacityExceededError(maxConcurrentSessions);
@@ -66,38 +66,73 @@ export class LiveSessionService {
     if (sessions.find(id)) throw new SessionAlreadyExistsError(id);
 
     const session = new Session({ ...config, id }, clock.now());
-    const glossary = glossaries.get(config.glossaryId);
     sessions.add(session);
+    logger.child({ sessionId: id }).info('starting session', { title: session.title });
 
+    try {
+      await this.#attachStream(session);
+    } catch (error) {
+      sessions.remove(id);
+      throw error;
+    }
+
+    const snapshot = this.snapshot(session);
+    publisher.publish(id, { type: 'session.started', session: snapshot });
+    return snapshot;
+  }
+
+  async restart(sessionId: string): Promise<SessionSnapshot> {
+    const { sessions, publisher, logger, maxConcurrentSessions } = this.#opts;
+    const session = sessions.find(sessionId);
+    if (!session) throw new SessionNotFoundError(sessionId);
+
+    if (this.#running.has(sessionId)) return this.snapshot(session);
+    if (this.#running.size >= maxConcurrentSessions) {
+      throw new CapacityExceededError(maxConcurrentSessions);
+    }
+
+    logger.child({ sessionId }).info('restarting session');
+    session.prepareForRestart();
+    await this.#attachStream(session);
+
+    const snapshot = this.snapshot(session);
+    publisher.publish(sessionId, { type: 'session.started', session: snapshot });
+    return snapshot;
+  }
+
+  async #attachStream(session: Session): Promise<void> {
+    const { engine, glossaries, clock, logger, publisher } = this.#opts;
+    const id = session.id;
+    const glossary = glossaries.get(session.glossaryId);
     const log = logger.child({ sessionId: id });
-    log.info('starting session', { title: session.title, glossary: glossary.id });
 
     let stream;
     try {
       stream = await engine.open({
-      sessionId: id,
-      sourceLanguage: session.sourceLanguage,
-      vocabulary: toCustomVocabulary(glossary),
-      mode: this.#opts.transcriptionMode,
-      onInterim: (result) => this.#onInterim(id, result.text, result.language),
-      onFinal: (result) => this.#onFinal(id, result.text, result.language),
-      onRotate: () => {
-        session.rotations += 1;
-        log.info('rotated upstream stream', { rotations: session.rotations });
-      },
-      onError: (error) => {
-        log.error('engine error', { error: error.message });
-        session.markFailed(error.message, clock.now());
-        publisher.publish(id, { type: 'session.stats', session: this.snapshot(session) });
-      },
+        sessionId: id,
+        sourceLanguage: session.sourceLanguage,
+        vocabulary: toCustomVocabulary(glossary),
+        mode: this.#opts.transcriptionMode,
+        onInterim: (result) => this.#onInterim(id, result.text, result.language),
+        onFinal: (result) => this.#onFinal(id, result.text, result.language),
+        onRotate: () => {
+          session.rotations += 1;
+          log.info('rotated upstream stream', { rotations: session.rotations });
+        },
+        onError: (error) => {
+          log.warn('engine error; stream will try to recover', { error: error.message });
+          session.noteError(error.message);
+          publisher.publish(id, { type: 'session.stats', session: this.snapshot(session) });
+        },
       });
     } catch (error) {
-      sessions.remove(id);
       const reason = error instanceof Error ? error.message : String(error);
-      log.error('could not open the speech engine; session discarded', { error: reason });
+      log.error('could not open the speech engine', { error: reason });
+      session.markFailed(reason, clock.now());
       throw new EngineUnavailableError(reason);
     }
 
+    session.markLive(clock.now());
     this.#running.set(id, {
       session,
       stream,
@@ -105,11 +140,6 @@ export class LiveSessionService {
       queue: Promise.resolve(),
       recentText: [],
     });
-
-    session.markLive(clock.now());
-    const snapshot = this.snapshot(session);
-    publisher.publish(id, { type: 'session.started', session: snapshot });
-    return snapshot;
   }
 
   ingest(sessionId: string, pcm: Buffer): void {
@@ -243,9 +273,24 @@ export class LiveSessionService {
   }
 
   publishStats(): void {
+    this.#reapDeadStreams();
     for (const session of this.#opts.sessions.list()) {
       if (!session.isActive) continue;
       this.#opts.publisher.publish(session.id, { type: 'session.stats', session: this.snapshot(session) });
+    }
+  }
+
+  #reapDeadStreams(): void {
+    const { clock, logger, publisher } = this.#opts;
+    for (const [id, running] of this.#running) {
+      if (!running.stream.closed) continue;
+      this.#running.delete(id);
+      running.session.markFailed(
+        running.session.error ?? 'the speech stream closed unexpectedly',
+        clock.now(),
+      );
+      logger.warn('speech stream died; source marked as failed', { sessionId: id });
+      publisher.publish(id, { type: 'session.stats', session: this.snapshot(running.session) });
     }
   }
 

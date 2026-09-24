@@ -121,6 +121,16 @@ export class Session {
     this.endedAt = now;
   }
 
+  noteError(reason: string): void {
+    this.error = reason;
+  }
+
+  prepareForRestart(): void {
+    this.error = undefined;
+    this.endedAt = undefined;
+    this.status = 'starting';
+  }
+
   markFailed(reason: string, now: number): void {
     this.status = 'error';
     this.error = reason;

@@ -84,6 +84,12 @@ export class SessionsController {
     return snapshot;
   }
 
+  @Post(':id/restart')
+  @HttpCode(200)
+  async restart(@Param('id') id: string): Promise<SessionSnapshot> {
+    return this.live.restart(id);
+  }
+
   @Post(':id/outputs')
   addOutput(@Param('id') id: string, @Body() body: { language?: string }): SessionSnapshot {
     const raw = body.language?.trim();
