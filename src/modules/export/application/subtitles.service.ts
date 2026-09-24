@@ -1,9 +1,11 @@
 import type { TranscriptSegment } from '@modules/transcription/domain/transcript.entity';
 import { findTranslation } from '@modules/transcription/domain/transcript.entity';
+import { splitIntoCaptions } from '@modules/transcription/domain/caption-splitter';
 import type { LanguageCode } from '@shared/language/language';
 
-const MIN_CUE_MS = 1200;
-const MAX_CUE_MS = 7000;
+const MIN_CUE_MS = 900;
+const MAX_CUE_MS = 6000;
+const DEFAULT_SEGMENT_MS = 3000;
 
 interface Cue {
   index: number;
@@ -20,11 +22,26 @@ function toCues(segments: TranscriptSegment[], language?: LanguageCode): Cue[] {
     const text = language ? findTranslation(segment, language) : segment.text;
     if (!text || text.trim() === '') continue;
 
-    const end = Math.max(segment.audioOffsetMs, previousEnd + MIN_CUE_MS);
-    const start = Math.max(previousEnd, end - MAX_CUE_MS);
-    cues.push({ index: cues.length + 1, startMs: start, endMs: end, text: text.trim() });
-    previousEnd = end;
+    const lines = splitIntoCaptions(text);
+    if (lines.length === 0) continue;
+
+    const segmentEnd = Math.max(segment.audioOffsetMs, previousEnd + MIN_CUE_MS);
+    const available = Math.max(segmentEnd - previousEnd, lines.length * MIN_CUE_MS);
+    const segmentStart = segmentEnd - available;
+    const totalChars = lines.reduce((sum, line) => sum + line.length, 0) || 1;
+
+    let cursor = Math.max(previousEnd, segmentStart);
+    for (const line of lines) {
+      const share = (line.length / totalChars) * available;
+      const duration = Math.min(MAX_CUE_MS, Math.max(MIN_CUE_MS, share || DEFAULT_SEGMENT_MS));
+      const start = cursor;
+      const end = start + duration;
+      cues.push({ index: cues.length + 1, startMs: start, endMs: end, text: line });
+      cursor = end;
+    }
+    previousEnd = cursor;
   }
+
   return cues;
 }
 

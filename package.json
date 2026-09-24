@@ -13,7 +13,8 @@
     "smoke": "npm run build && node dist/scripts/smoke-gemini.js",
     "replay": "node dist/scripts/replay.js",
     "typecheck": "tsc --noEmit",
-    "test": "npm run build && node --test dist/test/"
+    "test": "npm run build && node --test dist/test/",
+    "ingest": "node dist/scripts/ingest.js"
   },
   "dependencies": {
     "@nestjs/common": "^11.2.6",
