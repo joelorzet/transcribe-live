@@ -8,6 +8,10 @@ export interface InputDescriptor {
   waitingForPublisher: boolean;
   server?: string;
   streamKey?: string;
+  /** Where in the source the ingest began, for media pulled from a URL. */
+  startSeconds?: number;
+  /** Where the server currently is in that source: startSeconds + audio ingested. */
+  positionSeconds?: number;
 }
 
 export class InputRegistry {

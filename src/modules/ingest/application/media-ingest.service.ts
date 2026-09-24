@@ -26,11 +26,17 @@ export interface StartIngestOptions {
   durationSeconds?: number;
 }
 
+function positionOf(startSeconds: number | undefined, ingested: number): number {
+  return (startSeconds ?? 0) + ingested;
+}
+
 export type IngestKind = 'pull' | 'rtmp';
 
 export interface IngestStatus {
   trackId: string;
   kind: IngestKind;
+  startSeconds?: number;
+  positionSeconds?: number;
   source: string;
   secondsIngested: number;
   startedAt: number;
@@ -139,6 +145,8 @@ export class MediaIngestService {
       kind: 'pull',
       source,
       waitingForPublisher: false,
+      startSeconds: options.startSeconds ?? 0,
+      positionSeconds: options.startSeconds ?? 0,
     }, stream);
 
     log.info('ingest started', { source });
@@ -148,7 +156,7 @@ export class MediaIngestService {
   #track(
     trackId: string,
     details: Pick<IngestStatus, 'kind' | 'source' | 'waitingForPublisher'> &
-      Partial<Pick<IngestStatus, 'pushUrl' | 'server' | 'streamKey'>>,
+      Partial<Pick<IngestStatus, 'pushUrl' | 'server' | 'streamKey' | 'startSeconds' | 'positionSeconds'>>,
     stream: PcmStream,
   ): RunningIngest {
     const entry: RunningIngest = {
@@ -167,6 +175,8 @@ export class MediaIngestService {
       waitingForPublisher: entry.waitingForPublisher,
       server: entry.server,
       streamKey: entry.streamKey,
+      startSeconds: entry.startSeconds,
+      positionSeconds: entry.positionSeconds,
     });
 
     this.#wire(trackId, entry, stream);
@@ -181,9 +191,11 @@ export class MediaIngestService {
       try {
         this.live.ingest(trackId, chunk);
         entry.secondsIngested += chunk.byteLength / (16000 * 2);
+        entry.positionSeconds = positionOf(entry.startSeconds, entry.secondsIngested);
         this.registry.patch(trackId, {
           waitingForPublisher: false,
           secondsIngested: Number(entry.secondsIngested.toFixed(1)),
+          positionSeconds: Number(entry.positionSeconds.toFixed(2)),
         });
       } catch {
         this.stop(trackId);
@@ -250,6 +262,8 @@ export class MediaIngestService {
       pushUrl: entry.pushUrl,
       server: entry.server,
       streamKey: entry.streamKey,
+      startSeconds: entry.startSeconds,
+      positionSeconds: entry.positionSeconds,
     };
   }
 
