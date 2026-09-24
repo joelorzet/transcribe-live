@@ -2,7 +2,7 @@ import { BadRequestException, Body, Controller, Delete, Get, HttpCode, Inject, P
 import { LiveSessionService, parseTargets } from '@modules/sessions/application/live-session.service';
 import { SessionNotFoundError } from '@modules/sessions/domain/session.errors';
 import type { SessionSnapshot } from '@modules/sessions/domain/session.entity';
-import { parseSourceLanguage } from '@shared/language/language';
+import { parseLanguage, parseSourceLanguage } from '@shared/language/language';
 import { SESSION_REPOSITORY, APP_CONFIG } from '@shared/tokens';
 import type { SessionRepositoryPort } from '@modules/sessions/application/ports/session.repository.port';
 import type { AppConfig } from '@shared/config/env';
@@ -65,6 +65,19 @@ export class SessionsController {
   @HttpCode(200)
   async stop(@Param('id') id: string): Promise<SessionSnapshot> {
     return this.live.stop(id);
+  }
+
+  @Post(':id/outputs')
+  addOutput(@Param('id') id: string, @Body() body: { language?: string }): SessionSnapshot {
+    const raw = body.language?.trim();
+    if (!raw) throw new BadRequestException('language is required');
+    return this.live.addOutput(id, parseLanguage(raw));
+  }
+
+  @Delete(':id/outputs/:language')
+  @HttpCode(200)
+  removeOutput(@Param('id') id: string, @Param('language') language: string): SessionSnapshot {
+    return this.live.removeOutput(id, parseLanguage(language));
   }
 
   @Delete('ended')

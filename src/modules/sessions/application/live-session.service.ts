@@ -154,7 +154,36 @@ export class LiveSessionService {
 
   snapshot(session: Session): SessionSnapshot {
     session.viewers = this.#opts.publisher.subscriberCount(session.id);
-    return session.toSnapshot(this.#opts.costEstimator.estimate(session));
+    const { costEstimator } = this.#opts;
+    return session.toSnapshot(costEstimator.estimate(session), costEstimator.outputSnapshots(session));
+  }
+
+  addOutput(sessionId: string, language: LanguageCode): SessionSnapshot {
+    const { sessions, clock, publisher, logger } = this.#opts;
+    const session = sessions.find(sessionId);
+    if (!session) throw new SessionNotFoundError(sessionId);
+
+    session.addOutput(language, clock.now());
+    logger.info('output added', { sessionId, language, outputs: session.outputs.size });
+
+    const snapshot = this.snapshot(session);
+    publisher.publish(sessionId, { type: 'session.stats', session: snapshot });
+    return snapshot;
+  }
+
+  removeOutput(sessionId: string, language: LanguageCode): SessionSnapshot {
+    const { sessions, publisher, logger } = this.#opts;
+    const session = sessions.find(sessionId);
+    if (!session) throw new SessionNotFoundError(sessionId);
+
+    if (!session.removeOutput(language)) {
+      throw new SessionNotFoundError(`${sessionId}/${language}`);
+    }
+    logger.info('output removed', { sessionId, language, outputs: session.outputs.size });
+
+    const snapshot = this.snapshot(session);
+    publisher.publish(sessionId, { type: 'session.stats', session: snapshot });
+    return snapshot;
   }
 
   listSnapshots(): SessionSnapshot[] {
@@ -222,7 +251,7 @@ export class LiveSessionService {
     running.recentText.push(text);
     if (running.recentText.length > this.#opts.contextWindow) running.recentText.shift();
 
-    const targets = session.targetLanguages.filter((t) => t !== language);
+    const targets = [...session.outputs.keys()].filter((t) => t !== language);
     if (targets.length > 0) {
       running.queue = running.queue
         .then(() => this.#translate(running, segment, targets))
@@ -255,8 +284,14 @@ export class LiveSessionService {
             latencyMs: clock.now() - startedAt,
           };
           segment.translations.push(translation);
-          session.translationInputTokens += result.inputTokens;
-          session.translationOutputTokens += result.outputTokens;
+          const output = session.outputs.get(target);
+          if (!output) return;
+          output.record(
+            countWords(result.text),
+            result.inputTokens,
+            result.outputTokens,
+            segment.latencyMs + translation.latencyMs,
+          );
           session.captionLatency.record(segment.latencyMs + translation.latencyMs);
 
           publisher.publish(session.id, {

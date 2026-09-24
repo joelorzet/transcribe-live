@@ -1,6 +1,7 @@
 import type { LanguageCode, SourceLanguage } from '@shared/language/language';
 import { InvalidSessionStateError } from '@modules/sessions/domain/session.errors';
 import { LatencyWindow, type LatencySnapshot } from '@modules/sessions/domain/latency';
+import { TrackOutput, type OutputSnapshot } from '@modules/sessions/domain/track-output.entity';
 
 export type SessionStatus = 'starting' | 'live' | 'ended' | 'error';
 
@@ -12,10 +13,18 @@ export interface SessionConfig {
   glossaryId: string;
 }
 
+export class OutputAlreadyExistsError extends InvalidSessionStateError {
+  constructor(language: string) {
+    super(`This track already streams a ${language} output`);
+  }
+}
+
 export interface SessionCost {
   audioSeconds: number;
   translationInputTokens: number;
   translationOutputTokens: number;
+  audioUsd: number;
+  translationUsd: number;
   usd: number;
 }
 
@@ -25,6 +34,7 @@ export interface SessionSnapshot {
   status: SessionStatus;
   sourceLanguage: SourceLanguage;
   targetLanguages: LanguageCode[];
+  outputs: OutputSnapshot[];
   glossaryId: string;
   createdAt: number;
   startedAt?: number;
@@ -45,8 +55,9 @@ export class Session {
   readonly createdAt: number;
   title: string;
   sourceLanguage: SourceLanguage;
-  targetLanguages: LanguageCode[];
   glossaryId: string;
+
+  readonly outputs = new Map<LanguageCode, TrackOutput>();
 
   status: SessionStatus = 'starting';
   startedAt?: number;
@@ -59,9 +70,6 @@ export class Session {
   rotations = 0;
   viewers = 0;
 
-  translationInputTokens = 0;
-  translationOutputTokens = 0;
-
   readonly captionLatency = new LatencyWindow();
   readonly transcriptionLatency = new LatencyWindow();
 
@@ -71,9 +79,25 @@ export class Session {
     this.id = config.id;
     this.title = config.title;
     this.sourceLanguage = config.sourceLanguage;
-    this.targetLanguages = config.targetLanguages;
     this.glossaryId = config.glossaryId;
     this.createdAt = now;
+    for (const language of config.targetLanguages) this.addOutput(language, now);
+  }
+
+  get targetLanguages(): LanguageCode[] {
+    return [...this.outputs.keys()];
+  }
+
+  addOutput(language: LanguageCode, now: number): TrackOutput {
+    const existing = this.outputs.get(language);
+    if (existing) throw new OutputAlreadyExistsError(language);
+    const output = new TrackOutput(language, now);
+    this.outputs.set(language, output);
+    return output;
+  }
+
+  removeOutput(language: LanguageCode): boolean {
+    return this.outputs.delete(language);
   }
 
   nextSeq(): number {
@@ -111,13 +135,14 @@ export class Session {
     return this.audioMs / 1000;
   }
 
-  toSnapshot(cost: SessionCost): SessionSnapshot {
+  toSnapshot(cost: SessionCost, outputSnapshots: OutputSnapshot[] = []): SessionSnapshot {
     return {
       id: this.id,
       title: this.title,
       status: this.status,
       sourceLanguage: this.sourceLanguage,
       targetLanguages: this.targetLanguages,
+      outputs: outputSnapshots,
       glossaryId: this.glossaryId,
       createdAt: this.createdAt,
       startedAt: this.startedAt,
