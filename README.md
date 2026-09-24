@@ -157,19 +157,36 @@ by guessing a name.
 
 ## Scaling and cost
 
-**Measured on one laptop against the Gemini free tier**, streaming samples at wall clock speed:
+**Measured on one laptop**, streaming the bundled samples at wall clock speed:
 
-| Concurrent inputs | Outputs | Result |
-|---|---|---|
-| 3 | 6 | All captioned. First caption 1.3–1.5s. p50 latency 0.6–1.7s. Node at 70 MB RSS, under 1% CPU. |
-| 5 | 5 | All five sessions opened; one retry; one fell back to the secondary speech model. |
-| 6 | 12 | **Degraded**: one input produced no captions, three were slow to start. Cause was free tier quota, not the process. |
+| Inputs | Outputs | Tier | Result |
+|---|---|---|---|
+| 3 | 6 | free | All captioned. First caption 1.3–1.5s, p50 0.6–1.7s. Node at 70 MB RSS, under 1% CPU. |
+| 5 | 5 | free | All five opened. One retry, one automatic fallback to the secondary speech model. |
+| 6 | 12 | free | **Degraded.** One input silent, three slow to start. `RESOURCE_EXHAUSTED` from the free tier. |
+| 6 | 12 | paid | 5 of 6 captioned, p50 0.8–3.6s, total spend $0.0021 for the run. Two streams went silent and were recovered automatically. |
 
-The honest summary: **the architecture is not the limit, the API quota is.** Each input holds
-one upstream speech connection and each output is one translation request per finished
-segment. A single Node process fanned six inputs into twelve language outputs at 70 MB and
-negligible CPU, because it is only moving bytes. When we hit the ceiling it was
-`RESOURCE_EXHAUSTED` from the free tier, which a billing account removes.
+The honest summary: **the process is not the limit.** One Node instance fanned six inputs into
+twelve language outputs at 70 MB and negligible CPU, because it is mostly moving bytes. The
+limits that actually bite are upstream: free tier quota first, then occasional silent or
+refused connections from the speech API, all of which are handled rather than hidden.
+
+The remaining gap at six inputs is one source that produced no captions before its clip
+ended. The bundled samples are 17 to 21 seconds, which is shorter than the silence detector
+needs; a real talk gives it room to work.
+
+### What happens when the upstream misbehaves
+
+Every one of these was observed during development, not anticipated on paper.
+
+| Failure | Response |
+|---|---|
+| Session hits the Live API's ~10 minute cap | Rotate: dial a replacement, swap the write path, drain the old one. Audio is never written to two connections, so nothing is transcribed twice. |
+| A model is quota limited or overloaded | Both model chains fail over and remember which model worked. We watched `gemini-3.8-flash` return 429 for an hour while captions kept flowing on `gemini-3.5-flash-lite`. |
+| Connection refused on open | Five attempts with jittered backoff, rotating through the model chain. Before this, 2 of 5 concurrent creates failed; after, 5 of 5 succeeded. |
+| A transient error mid-talk | Recorded and shown, while the stream recovers itself. Only a genuinely closed stream marks a source failed. |
+| **Audio flowing but no captions** | A watchdog reconnects the speech stream after 20 silent seconds, up to three times, then surfaces the problem. This is the dangerous one: the connection looks healthy and the room just stops getting subtitles. |
+| A source did fail | `POST /api/sessions/:id/restart` reattaches it, keeping transcript, outputs and glossary. |
 
 `MAX_CONCURRENT_SESSIONS` (default 16) is a deliberate guard: past it the API returns
 `503 capacity_exceeded` rather than accepting a talk it cannot serve.

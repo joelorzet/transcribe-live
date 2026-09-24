@@ -63,7 +63,7 @@ export function loadConfig(): AppConfig {
     apiKey,
     transcribeModels: str('TRANSCRIBE_MODEL', 'gemini-3.5-transcribe-live,gemini-3.8-live')
       .split(',').map((m) => m.trim()).filter(Boolean),
-    translateModels: str('TRANSLATE_MODEL', 'gemini-3.7-flash,gemini-3.5-flash-lite,gemini-3.8-flash')
+    translateModels: str('TRANSLATE_MODEL', 'gemini-3.8-flash,gemini-3.5-flash-lite,gemini-3.7-flash')
       .split(',').map((m) => m.trim()).filter(Boolean),
     transcriptionMode: str('TRANSCRIPTION_MODE', 'VERBATIM') === 'SMART' ? 'SMART' : 'VERBATIM',
     rotateSeconds: num('SESSION_ROTATE_SECONDS', 480),
