@@ -11,6 +11,7 @@ import { LiveSessionService } from '@modules/sessions/application/live-session.s
 import { DomainError } from '@shared/errors/domain.errors';
 import type { LoggerPort } from '@shared/ports/system.port';
 import type { InputRegistry } from '@shared/input/input-registry';
+import { RTMP_APP, type RtmpRelay } from '@modules/ingest/infrastructure/rtmp-relay';
 
 export class MediaIngestError extends DomainError {
   constructor(message: string) {
@@ -41,69 +42,82 @@ export interface IngestStatus {
 
 export interface RtmpEndpointOptions {
   host: string;
-  basePort: number;
-  waitSeconds: number;
+  port: number;
 }
 
 interface RunningIngest extends IngestStatus {
-  stream: PcmStream;
-  port?: number;
+  stream: PcmStream | undefined;
 }
 
 export class MediaIngestService {
   readonly #running = new Map<string, RunningIngest>();
-
-  readonly #usedPorts = new Set<number>();
 
   constructor(
     private readonly live: LiveSessionService,
     private readonly logger: LoggerPort,
     private readonly rtmp: RtmpEndpointOptions,
     private readonly registry: InputRegistry,
-  ) {}
+    private readonly relay: RtmpRelay,
+  ) {
+    this.relay.start();
+  }
 
   async startRtmp(trackId: string, publicHost: string): Promise<IngestStatus> {
     if (this.#running.has(trackId)) {
       throw new MediaIngestError(`Track "${trackId}" is already ingesting media`);
     }
 
-    const port = this.#allocatePort();
     const host = this.rtmp.host || publicHost;
-    const streamKey = randomUUID();
-    const pushUrl = buildRtmpPushUrl(host, port, streamKey);
-    const server = `rtmp://${host}:${port}/live`;
+    const streamKey = this.relay.register(trackId);
+    const server = `rtmp://${host}:${this.rtmp.port}/${RTMP_APP}`;
 
-    const stream = openPcmStream({
-      source: buildRtmpListenUrl(port, streamKey),
-      listen: true,
-      listenTimeoutSeconds: this.rtmp.waitSeconds,
-      realtime: false,
-    });
-
-    const entry = this.#track(trackId, {
+    const entry: RunningIngest = {
+      trackId,
       kind: 'rtmp',
-      source: pushUrl,
-      pushUrl,
+      source: `${server}/${streamKey}`,
+      pushUrl: `${server}/${streamKey}`,
       server,
       streamKey,
+      secondsIngested: 0,
+      startedAt: Date.now(),
       waitingForPublisher: true,
-      port,
-    }, stream);
+      stream: undefined,
+    };
+    this.#running.set(trackId, entry);
+    this.registry.set(trackId, {
+      kind: 'rtmp',
+      source: entry.source,
+      secondsIngested: 0,
+      startedAt: entry.startedAt,
+      waitingForPublisher: true,
+      server,
+      streamKey,
+    });
 
     this.logger.child({ sessionId: trackId, component: 'ingest' }).info('waiting for rtmp publisher', {
-      pushUrl,
+      server,
     });
     return this.#toStatus(entry);
   }
 
-  #allocatePort(): number {
-    for (let port = this.rtmp.basePort; port < this.rtmp.basePort + 200; port += 1) {
-      if (!this.#usedPorts.has(port)) {
-        this.#usedPorts.add(port);
-        return port;
-      }
-    }
-    throw new MediaIngestError('No RTMP ports available');
+  attachPublisher(trackId: string, pullUrl: string): void {
+    const entry = this.#running.get(trackId);
+    if (!entry || entry.stream) return;
+
+    const stream = openPcmStream({ source: pullUrl, realtime: false });
+    entry.stream = stream;
+    entry.waitingForPublisher = false;
+    this.#wire(trackId, entry, stream);
+    this.registry.patch(trackId, { waitingForPublisher: false });
+  }
+
+  detachPublisher(trackId: string): void {
+    const entry = this.#running.get(trackId);
+    if (!entry) return;
+    entry.stream?.stop();
+    entry.stream = undefined;
+    entry.waitingForPublisher = true;
+    this.registry.patch(trackId, { waitingForPublisher: true });
   }
 
   async start(options: StartIngestOptions): Promise<IngestStatus> {
@@ -134,10 +148,9 @@ export class MediaIngestService {
   #track(
     trackId: string,
     details: Pick<IngestStatus, 'kind' | 'source' | 'waitingForPublisher'> &
-      Partial<Pick<IngestStatus, 'pushUrl' | 'server' | 'streamKey'>> & { port?: number },
+      Partial<Pick<IngestStatus, 'pushUrl' | 'server' | 'streamKey'>>,
     stream: PcmStream,
   ): RunningIngest {
-    const log = this.logger.child({ sessionId: trackId, component: 'ingest' });
     const entry: RunningIngest = {
       trackId,
       secondsIngested: 0,
@@ -156,6 +169,13 @@ export class MediaIngestService {
       streamKey: entry.streamKey,
     });
 
+    this.#wire(trackId, entry, stream);
+    return entry;
+  }
+
+  #wire(trackId: string, entry: RunningIngest, stream: PcmStream): void {
+    const log = this.logger.child({ sessionId: trackId, component: 'ingest' });
+
     stream.pcm.on('data', (chunk: Buffer) => {
       entry.waitingForPublisher = false;
       try {
@@ -172,7 +192,8 @@ export class MediaIngestService {
 
     stream.pcm.on('end', () => {
       log.info('media ended', { seconds: Math.round(entry.secondsIngested) });
-      this.#release(trackId);
+      if (entry.kind === 'rtmp') this.detachPublisher(trackId);
+      else this.#release(trackId);
     });
 
     stream.process.stderr.on('data', (chunk: Buffer) => {
@@ -184,13 +205,9 @@ export class MediaIngestService {
       log.error('ffmpeg failed to start', { error: error.message });
       this.#release(trackId);
     });
-
-    return entry;
   }
 
   #release(trackId: string): void {
-    const entry = this.#running.get(trackId);
-    if (entry?.port) this.#usedPorts.delete(entry.port);
     this.#running.delete(trackId);
     this.registry.clear(trackId);
   }
@@ -207,7 +224,8 @@ export class MediaIngestService {
   stop(trackId: string): void {
     const entry = this.#running.get(trackId);
     if (!entry) return;
-    entry.stream.stop();
+    entry.stream?.stop();
+    this.relay.unregister(trackId);
     this.#release(trackId);
     this.logger.info('ingest stopped', { sessionId: trackId });
   }
@@ -237,5 +255,6 @@ export class MediaIngestService {
 
   shutdown(): void {
     for (const trackId of [...this.#running.keys()]) this.stop(trackId);
+    this.relay.stop();
   }
 }
