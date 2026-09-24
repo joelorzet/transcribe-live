@@ -1,7 +1,4 @@
-export const SUPPORTED_LANGUAGES = [
-  'es', 'en', 'pt', 'fr', 'de', 'it', 'ca', 'nl',
-  'ja', 'zh', 'ko', 'hi', 'ar', 'ru', 'tr', 'pl',
-] as const;
+export const SUPPORTED_LANGUAGES = ['es', 'en', 'pt', 'fr', 'de', 'it', 'nl', 'ja', 'zh'] as const;
 
 export type LanguageCode = (typeof SUPPORTED_LANGUAGES)[number];
 
@@ -12,16 +9,9 @@ const LANGUAGE_NAMES: Record<LanguageCode, string> = {
   fr: 'French',
   de: 'German',
   it: 'Italian',
-  ca: 'Catalan',
   nl: 'Dutch',
   ja: 'Japanese',
   zh: 'Chinese (Simplified)',
-  ko: 'Korean',
-  hi: 'Hindi',
-  ar: 'Arabic',
-  ru: 'Russian',
-  tr: 'Turkish',
-  pl: 'Polish',
 };
 
 const BCP47: Record<LanguageCode, string> = {
@@ -31,16 +21,9 @@ const BCP47: Record<LanguageCode, string> = {
   fr: 'fr-FR',
   de: 'de-DE',
   it: 'it-IT',
-  ca: 'ca-ES',
   nl: 'nl-NL',
   ja: 'ja-JP',
   zh: 'cmn-Hans-CN',
-  ko: 'ko-KR',
-  hi: 'hi-IN',
-  ar: 'ar-XA',
-  ru: 'ru-RU',
-  tr: 'tr-TR',
-  pl: 'pl-PL',
 };
 
 export function isLanguageCode(value: string): value is LanguageCode {
