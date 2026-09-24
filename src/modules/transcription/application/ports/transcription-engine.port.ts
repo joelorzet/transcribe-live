@@ -20,7 +20,13 @@ export interface TranscriptionStreamOptions {
   onError: (error: Error) => void;
 }
 
+export interface TranscriptionReconfigure {
+  sourceLanguage?: SourceLanguage;
+  vocabulary?: string[];
+}
+
 export interface TranscriptionStream {
+  reconfigure(patch: TranscriptionReconfigure): Promise<void>;
   write(pcm: Buffer): void;
   close(): Promise<void>;
   readonly closed: boolean;

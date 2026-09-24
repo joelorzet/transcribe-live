@@ -3,6 +3,7 @@ import { toBcp47 } from '@shared/language/language';
 import type { LanguageCode } from '@shared/language/language';
 import type {
   TranscriptionEnginePort,
+  TranscriptionReconfigure,
   TranscriptionStream,
   TranscriptionStreamOptions,
 } from '@modules/transcription/application/ports/transcription-engine.port';
@@ -37,7 +38,7 @@ export class GeminiTranscriptionEngine implements TranscriptionEnginePort {
 
 class RotatingTranscriptionStream implements TranscriptionStream {
   readonly #config: GeminiTranscriptionConfig;
-  readonly #options: TranscriptionStreamOptions;
+  #options: TranscriptionStreamOptions;
   readonly #log: LoggerPort;
 
   #active: LiveConnection | undefined;
@@ -139,6 +140,17 @@ class RotatingTranscriptionStream implements TranscriptionStream {
     clearTimeout(this.#timer);
     if (this.#closed) return;
     this.#timer = setTimeout(() => void this.#rotate(), Math.max(1000, delayMs));
+  }
+
+  async reconfigure(patch: TranscriptionReconfigure): Promise<void> {
+    if (this.#closed) return;
+    this.#options = {
+      ...this.#options,
+      ...(patch.sourceLanguage ? { sourceLanguage: patch.sourceLanguage } : {}),
+      ...(patch.vocabulary ? { vocabulary: patch.vocabulary } : {}),
+    };
+    this.#log.info('reconfiguring stream', { sourceLanguage: this.#options.sourceLanguage });
+    await this.#rotate();
   }
 
   async #rotate(): Promise<void> {

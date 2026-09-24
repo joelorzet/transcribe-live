@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { Session, pcmBytesToMs, type SessionConfig, type SessionSnapshot } from '@modules/sessions/domain/session.entity';
 import { countWords, type TranscriptSegment, type Translation } from '@modules/transcription/domain/transcript.entity';
 import { toCustomVocabulary } from '@modules/glossary/domain/glossary.entity';
-import { parseLanguage, type LanguageCode } from '@shared/language/language';
+import { parseLanguage, type LanguageCode, type SourceLanguage } from '@shared/language/language';
 import { detectLanguage } from '@shared/language/language-detector';
 import {
   CapacityExceededError,
@@ -169,6 +169,45 @@ export class LiveSessionService {
     session.viewers = this.#opts.publisher.subscriberCount(session.id);
     const { costEstimator } = this.#opts;
     return session.toSnapshot(costEstimator.estimate(session), costEstimator.outputSnapshots(session));
+  }
+
+  async changeSourceLanguage(sessionId: string, sourceLanguage: SourceLanguage): Promise<SessionSnapshot> {
+    const { sessions, publisher, logger } = this.#opts;
+    const session = sessions.find(sessionId);
+    if (!session) throw new SessionNotFoundError(sessionId);
+
+    const running = this.#running.get(sessionId);
+    session.sourceLanguage = sourceLanguage;
+
+    if (running) {
+      await running.stream.reconfigure({ sourceLanguage });
+      session.rotations += 1;
+    }
+
+    logger.info('source language changed', { sessionId, sourceLanguage });
+    const snapshot = this.snapshot(session);
+    publisher.publish(sessionId, { type: 'session.stats', session: snapshot });
+    return snapshot;
+  }
+
+  async changeGlossary(sessionId: string, glossaryId: string): Promise<SessionSnapshot> {
+    const { sessions, glossaries, publisher, logger } = this.#opts;
+    const session = sessions.find(sessionId);
+    if (!session) throw new SessionNotFoundError(sessionId);
+
+    const glossary = glossaries.get(glossaryId);
+    session.glossaryId = glossary.id;
+
+    const running = this.#running.get(sessionId);
+    if (running) {
+      await running.stream.reconfigure({ vocabulary: toCustomVocabulary(glossary) });
+      session.rotations += 1;
+    }
+
+    logger.info('glossary changed', { sessionId, glossaryId: glossary.id });
+    const snapshot = this.snapshot(session);
+    publisher.publish(sessionId, { type: 'session.stats', session: snapshot });
+    return snapshot;
   }
 
   addOutput(sessionId: string, language: LanguageCode): SessionSnapshot {

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import {
   buildRtmpListenUrl,
   buildRtmpPushUrl,
@@ -66,11 +67,12 @@ export class MediaIngestService {
 
     const port = this.#allocatePort();
     const host = this.rtmp.host || publicHost;
-    const pushUrl = buildRtmpPushUrl(host, port, trackId);
+    const streamKey = randomUUID();
+    const pushUrl = buildRtmpPushUrl(host, port, streamKey);
     const server = `rtmp://${host}:${port}/live`;
 
     const stream = openPcmStream({
-      source: buildRtmpListenUrl(port, trackId),
+      source: buildRtmpListenUrl(port, streamKey),
       listen: true,
       listenTimeoutSeconds: this.rtmp.waitSeconds,
       realtime: false,
@@ -81,7 +83,7 @@ export class MediaIngestService {
       source: pushUrl,
       pushUrl,
       server,
-      streamKey: trackId,
+      streamKey,
       waitingForPublisher: true,
       port,
     }, stream);

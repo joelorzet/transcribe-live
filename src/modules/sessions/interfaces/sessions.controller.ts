@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Delete, Get, HttpCode, Inject, Param, Post } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, HttpCode, Inject, Param, Patch, Post } from '@nestjs/common';
 import { LiveSessionService, parseTargets } from '@modules/sessions/application/live-session.service';
 import { SessionNotFoundError } from '@modules/sessions/domain/session.errors';
 import type { SessionSnapshot } from '@modules/sessions/domain/session.entity';
@@ -65,6 +65,23 @@ export class SessionsController {
   @HttpCode(200)
   async stop(@Param('id') id: string): Promise<SessionSnapshot> {
     return this.live.stop(id);
+  }
+
+  @Patch(':id')
+  async update(
+    @Param('id') id: string,
+    @Body() body: { sourceLanguage?: string; glossaryId?: string },
+  ): Promise<SessionSnapshot> {
+    let snapshot: SessionSnapshot | undefined;
+
+    if (body.sourceLanguage !== undefined) {
+      snapshot = await this.live.changeSourceLanguage(id, parseSourceLanguage(body.sourceLanguage));
+    }
+    if (body.glossaryId !== undefined) {
+      snapshot = await this.live.changeGlossary(id, body.glossaryId);
+    }
+    if (!snapshot) throw new BadRequestException('nothing to update');
+    return snapshot;
   }
 
   @Post(':id/outputs')

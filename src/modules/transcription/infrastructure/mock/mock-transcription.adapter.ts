@@ -67,6 +67,10 @@ class MockStream implements TranscriptionStream {
     }
   }
 
+  async reconfigure(): Promise<void> {
+    return undefined;
+  }
+
   async close(): Promise<void> {
     this.#closed = true;
   }
