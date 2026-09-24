@@ -5,6 +5,8 @@ import type { WebSocket } from 'ws';
 import type { Server } from 'node:http';
 import { LiveSessionService } from '@modules/sessions/application/live-session.service';
 import { CONTROL_ROOM } from '@modules/events/application/ports/event-publisher.port';
+import { isLanguageCode } from '@shared/language/language';
+import type { LanguageCode } from '@shared/language/language';
 import type { EventPublisherPort, SessionEvent } from '@modules/events/application/ports/event-publisher.port';
 import type { TranscriptStorePort } from '@modules/transcription/application/ports/transcript-store.port';
 import type { SessionRepositoryPort } from '@modules/sessions/application/ports/session.repository.port';
@@ -29,8 +31,12 @@ export class RealtimeGateway implements OnApplicationShutdown {
     @Inject(LOGGER) logger: LoggerPort,
   ) {
     this.#log = logger.child({ component: 'realtime' });
-    this.#ingest.on('connection', (socket, sessionId) => this.#onIngest(socket, sessionId as unknown as string));
-    this.#view.on('connection', (socket, topic) => this.#onViewer(socket, topic as unknown as string));
+    this.#ingest.on('connection', (socket: WebSocket, sessionId: string) =>
+      this.#onIngest(socket, sessionId),
+    );
+    this.#view.on('connection', (socket: WebSocket, topic: string, language?: LanguageCode) =>
+      this.#onViewer(socket, topic, language),
+    );
   }
 
   bind(server: Server): void {
@@ -47,7 +53,11 @@ export class RealtimeGateway implements OnApplicationShutdown {
 
       if (url.pathname === VIEW_PATH) {
         const topic = sessionId === '' ? CONTROL_ROOM : sessionId;
-        this.#view.handleUpgrade(request, socket, head, (ws) => this.#view.emit('connection', ws, topic));
+        const raw = url.searchParams.get('lang')?.trim().toLowerCase() ?? '';
+        const language = isLanguageCode(raw) ? raw : undefined;
+        this.#view.handleUpgrade(request, socket, head, (ws) =>
+          this.#view.emit('connection', ws, topic, language),
+        );
         return;
       }
 
@@ -76,12 +86,12 @@ export class RealtimeGateway implements OnApplicationShutdown {
     socket.on('error', (error) => this.#log.warn('ingest socket error', { sessionId, error: String(error) }));
   }
 
-  #onViewer(socket: WebSocket, topic: string): void {
+  #onViewer(socket: WebSocket, topic: string, language?: LanguageCode): void {
     const send = (payload: unknown): void => {
       if (socket.readyState === socket.OPEN) socket.send(JSON.stringify(payload));
     };
 
-    send({ type: 'hello', topic, sessions: this.live.listSnapshots() });
+    send({ type: 'hello', topic, language, sessions: this.live.listSnapshots() });
 
     if (topic !== CONTROL_ROOM) {
       for (const segment of this.transcripts.recent(topic, REPLAY_SEGMENTS)) {
@@ -89,7 +99,12 @@ export class RealtimeGateway implements OnApplicationShutdown {
       }
     }
 
-    const unsubscribe = this.publisher.subscribe(topic, (event) => send(event));
+    const unsubscribe = this.publisher.subscribe(topic, (event) => {
+      if (language && event.type === 'segment.translated' && event.translation.language !== language) {
+        return;
+      }
+      send(event);
+    });
     socket.on('close', () => unsubscribe());
     socket.on('error', () => unsubscribe());
   }

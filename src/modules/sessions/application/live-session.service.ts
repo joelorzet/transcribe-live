@@ -4,7 +4,12 @@ import { countWords, type TranscriptSegment, type Translation } from '@modules/t
 import { toCustomVocabulary } from '@modules/glossary/domain/glossary.entity';
 import { parseLanguage, type LanguageCode } from '@shared/language/language';
 import { detectLanguage } from '@shared/language/language-detector';
-import { CapacityExceededError, SessionAlreadyExistsError, SessionNotFoundError } from '@modules/sessions/domain/session.errors';
+import {
+  CapacityExceededError,
+  EngineUnavailableError,
+  SessionAlreadyExistsError,
+  SessionNotFoundError,
+} from '@modules/sessions/domain/session.errors';
 import type { TranscriptionEnginePort, TranscriptionMode, TranscriptionStream } from '@modules/transcription/application/ports/transcription-engine.port';
 import type { TranslatorPort } from '@modules/translation/application/ports/translator.port';
 import type { SessionRepositoryPort } from '@modules/sessions/application/ports/session.repository.port';
@@ -67,7 +72,9 @@ export class LiveSessionService {
     const log = logger.child({ sessionId: id });
     log.info('starting session', { title: session.title, glossary: glossary.id });
 
-    const stream = await engine.open({
+    let stream;
+    try {
+      stream = await engine.open({
       sessionId: id,
       sourceLanguage: session.sourceLanguage,
       vocabulary: toCustomVocabulary(glossary),
@@ -83,7 +90,13 @@ export class LiveSessionService {
         session.markFailed(error.message, clock.now());
         publisher.publish(id, { type: 'session.stats', session: this.snapshot(session) });
       },
-    });
+      });
+    } catch (error) {
+      sessions.remove(id);
+      const reason = error instanceof Error ? error.message : String(error);
+      log.error('could not open the speech engine; session discarded', { error: reason });
+      throw new EngineUnavailableError(reason);
+    }
 
     this.#running.set(id, {
       session,

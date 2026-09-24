@@ -34,7 +34,7 @@ async function bootstrap(): Promise<void> {
   logger.info('core-api listening', {
     url: `http://${config.host}:${config.port}`,
     engine: config.engine,
-    transcription: config.engine === 'gemini' ? config.transcribeModel : 'mock',
+    transcription: config.engine === 'gemini' ? config.transcribeModels.join(', ') : 'mock',
     translation: config.engine === 'gemini' ? config.translateModels.join(', ') : 'mock',
     capacity: config.maxConcurrentSessions,
   });

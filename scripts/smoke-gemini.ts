@@ -10,12 +10,12 @@ async function main(): Promise<void> {
 
   const audio = readWav(path);
   assertLiveApiFormat(audio, path);
-  console.log(`streaming ${path}: ${(audio.durationMs / 1000).toFixed(1)}s @ ${config.transcribeModel}\n`);
+  console.log(`streaming ${path}: ${(audio.durationMs / 1000).toFixed(1)}s @ ${config.transcribeModels.join(", ")}\n`);
 
   const logger = new ConsoleLogger('debug');
   const engine = new GeminiTranscriptionEngine({
     apiKey: config.apiKey,
-    model: config.transcribeModel,
+    models: config.transcribeModels,
     rotateSeconds: config.rotateSeconds,
     silenceDurationMs: config.silenceDurationMs,
     autoDetectLanguages: config.autoDetectLanguages,

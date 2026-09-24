@@ -33,6 +33,8 @@ export interface IngestStatus {
   startedAt: number;
   waitingForPublisher: boolean;
   pushUrl?: string;
+  server?: string;
+  streamKey?: string;
 }
 
 export interface RtmpEndpointOptions {
@@ -65,6 +67,7 @@ export class MediaIngestService {
     const port = this.#allocatePort();
     const host = this.rtmp.host || publicHost;
     const pushUrl = buildRtmpPushUrl(host, port, trackId);
+    const server = `rtmp://${host}:${port}/live`;
 
     const stream = openPcmStream({
       source: buildRtmpListenUrl(port, trackId),
@@ -77,6 +80,8 @@ export class MediaIngestService {
       kind: 'rtmp',
       source: pushUrl,
       pushUrl,
+      server,
+      streamKey: trackId,
       waitingForPublisher: true,
       port,
     }, stream);
@@ -125,7 +130,7 @@ export class MediaIngestService {
   #track(
     trackId: string,
     details: Pick<IngestStatus, 'kind' | 'source' | 'waitingForPublisher'> &
-      Partial<Pick<IngestStatus, 'pushUrl'>> & { port?: number },
+      Partial<Pick<IngestStatus, 'pushUrl' | 'server' | 'streamKey'>> & { port?: number },
     stream: PcmStream,
   ): RunningIngest {
     const log = this.logger.child({ sessionId: trackId, component: 'ingest' });
@@ -207,6 +212,8 @@ export class MediaIngestService {
       startedAt: entry.startedAt,
       waitingForPublisher: entry.waitingForPublisher,
       pushUrl: entry.pushUrl,
+      server: entry.server,
+      streamKey: entry.streamKey,
     };
   }
 

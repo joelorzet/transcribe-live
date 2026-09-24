@@ -16,7 +16,7 @@ import type { TranscriptStorePort } from '@modules/transcription/application/por
         config.engine === 'gemini'
           ? new GeminiTranscriptionEngine({
               apiKey: config.apiKey,
-              model: config.transcribeModel,
+              models: config.transcribeModels,
               rotateSeconds: config.rotateSeconds,
               silenceDurationMs: config.silenceDurationMs,
               autoDetectLanguages: config.autoDetectLanguages,

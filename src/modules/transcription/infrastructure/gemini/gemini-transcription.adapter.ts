@@ -10,7 +10,7 @@ import type { LoggerPort } from '@shared/ports/system.port';
 
 export interface GeminiTranscriptionConfig {
   apiKey: string;
-  model: string;
+  models: string[];
   rotateSeconds: number;
   silenceDurationMs: number;
   autoDetectLanguages: LanguageCode[];
@@ -48,10 +48,12 @@ class RotatingTranscriptionStream implements TranscriptionStream {
   #timer: NodeJS.Timeout | undefined;
   #recentFinals: string[] = [];
   #backoffMs = 500;
+  #model: string;
 
   constructor(config: GeminiTranscriptionConfig, options: TranscriptionStreamOptions) {
     this.#config = config;
     this.#options = options;
+    this.#model = config.models[0] as string;
     this.#log = config.logger.child({ sessionId: options.sessionId });
   }
 
@@ -60,16 +62,46 @@ class RotatingTranscriptionStream implements TranscriptionStream {
   }
 
   async start(): Promise<void> {
-    this.#active = await this.#dial();
+    this.#active = await this.#dialWithRetry();
     this.#flushPending();
     this.#armRotation(this.#config.rotateSeconds * 1000);
   }
 
-  #dial(): Promise<LiveConnection> {
+  async #dialWithRetry(attempts = 5): Promise<LiveConnection> {
+    const models = this.#config.models;
+    let lastError: unknown;
+
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      const model = models[(attempt - 1) % models.length] as string;
+      try {
+        const connection = await this.#dial(model);
+        if (model !== models[0]) {
+          this.#log.warn('opened on a fallback speech model', { model, preferred: models[0] });
+        }
+        this.#model = model;
+        return connection;
+      } catch (error) {
+        lastError = error;
+        if (attempt === attempts) break;
+        const base = Math.min(1000 * 2 ** (attempt - 1), 8000);
+        const backoffMs = Math.round(base * (0.7 + Math.random() * 0.6));
+        this.#log.warn('dial failed; retrying', {
+          attempt,
+          model,
+          backoffMs,
+          error: String(error),
+        });
+        await new Promise((resolve) => setTimeout(resolve, backoffMs));
+      }
+    }
+    throw lastError instanceof Error ? lastError : new Error(String(lastError));
+  }
+
+  #dial(model: string = this.#model): Promise<LiveConnection> {
     const { sourceLanguage, vocabulary, mode } = this.#options;
     const connection = new LiveConnection({
       apiKey: this.#config.apiKey,
-      model: this.#config.model,
+      model,
       languageCodes:
         sourceLanguage === 'auto'
           ? (this.#options.autoDetectLanguages ?? this.#config.autoDetectLanguages).map(toBcp47)
@@ -116,7 +148,7 @@ class RotatingTranscriptionStream implements TranscriptionStream {
     const retiring = this.#active;
 
     try {
-      const next = await this.#dial();
+      const next = await this.#dialWithRetry(3);
       if (this.#closed) {
         await next.close();
         return;

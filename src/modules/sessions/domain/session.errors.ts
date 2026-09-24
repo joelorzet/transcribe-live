@@ -23,3 +23,9 @@ export class CapacityExceededError extends DomainError {
     super('capacity_exceeded', `Server is at capacity (${limit} concurrent sessions)`, 503);
   }
 }
+
+export class EngineUnavailableError extends DomainError {
+  constructor(reason: string) {
+    super('engine_unavailable', `Speech engine refused the connection: ${reason}`, 503);
+  }
+}
