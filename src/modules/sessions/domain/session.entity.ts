@@ -12,6 +12,8 @@ export interface SessionConfig {
   sourceLanguage: SourceLanguage;
   targetLanguages: LanguageCode[];
   glossaryId: string;
+  /** Public stream the audience watches, when it differs from what we ingest. */
+  watchUrl?: string;
 }
 
 export class OutputAlreadyExistsError extends InvalidSessionStateError {
@@ -37,6 +39,7 @@ export interface SessionSnapshot {
   targetLanguages: LanguageCode[];
   outputs: OutputSnapshot[];
   input: InputDescriptor | null;
+  watchUrl?: string;
   glossaryId: string;
   createdAt: number;
   startedAt?: number;
@@ -58,6 +61,7 @@ export class Session {
   title: string;
   sourceLanguage: SourceLanguage;
   glossaryId: string;
+  watchUrl?: string;
 
   readonly outputs = new Map<LanguageCode, TrackOutput>();
 
@@ -82,6 +86,7 @@ export class Session {
     this.title = config.title;
     this.sourceLanguage = config.sourceLanguage;
     this.glossaryId = config.glossaryId;
+    this.watchUrl = config.watchUrl;
     this.createdAt = now;
     for (const language of config.targetLanguages) this.addOutput(language, now);
   }
@@ -160,6 +165,7 @@ export class Session {
       targetLanguages: this.targetLanguages,
       outputs: outputSnapshots,
       input,
+      watchUrl: this.watchUrl,
       glossaryId: this.glossaryId,
       createdAt: this.createdAt,
       startedAt: this.startedAt,

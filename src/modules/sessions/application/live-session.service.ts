@@ -237,6 +237,19 @@ export class LiveSessionService {
     return snapshot;
   }
 
+  async changeWatchUrl(sessionId: string, watchUrl: string | undefined): Promise<SessionSnapshot> {
+    const { sessions, publisher, logger } = this.#opts;
+    const session = sessions.find(sessionId);
+    if (!session) throw new SessionNotFoundError(sessionId);
+
+    session.watchUrl = watchUrl;
+    logger.info('watch url changed', { sessionId, watchUrl: watchUrl ?? 'none' });
+
+    const snapshot = this.snapshot(session);
+    publisher.publish(sessionId, { type: 'session.stats', session: snapshot });
+    return snapshot;
+  }
+
   async changeGlossary(sessionId: string, glossaryId: string): Promise<SessionSnapshot> {
     const { sessions, glossaries, publisher, logger } = this.#opts;
     const session = sessions.find(sessionId);

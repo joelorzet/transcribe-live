@@ -13,6 +13,7 @@ interface CreateSessionBody {
   sourceLanguage?: string;
   targetLanguages?: string;
   glossaryId?: string;
+  watchUrl?: string;
 }
 
 @Controller('api/sessions')
@@ -35,6 +36,7 @@ export class SessionsController {
         sourceLanguage: parseSourceLanguage(body.sourceLanguage ?? 'auto'),
         targetLanguages: parseTargets(body.targetLanguages, ['en']),
         glossaryId: body.glossaryId ?? 'none',
+        watchUrl: body.watchUrl?.trim() || undefined,
       });
     } catch (error) {
       if (error instanceof RangeError || error instanceof TypeError) {
@@ -70,9 +72,13 @@ export class SessionsController {
   @Patch(':id')
   async update(
     @Param('id') id: string,
-    @Body() body: { sourceLanguage?: string; glossaryId?: string },
+    @Body() body: { sourceLanguage?: string; glossaryId?: string; watchUrl?: string },
   ): Promise<SessionSnapshot> {
     let snapshot: SessionSnapshot | undefined;
+
+    if (body.watchUrl !== undefined) {
+      snapshot = await this.live.changeWatchUrl(id, body.watchUrl.trim() || undefined);
+    }
 
     if (body.sourceLanguage !== undefined) {
       snapshot = await this.live.changeSourceLanguage(id, parseSourceLanguage(body.sourceLanguage));
