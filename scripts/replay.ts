@@ -27,7 +27,7 @@ function parseTracks(argv: string[]): Track[] {
       file,
       title: name.replace(/^talk-/, '').replace(/-/g, ' '),
       sourceLanguage: isEnglish ? 'en' : 'es',
-      targetLanguages: isEnglish ? 'es' : 'en',
+      targetLanguages: isEnglish ? 'es,pt' : 'en,pt',
     };
   });
 }
@@ -121,6 +121,11 @@ async function main(): Promise<void> {
 
   console.log(`\n${DIM}all tracks finished in ${wall}s${RESET}\n`);
   const summary = (await (await fetch(`${API}/api/sessions`)).json()) as any;
+  const totalOutputs = summary.sessions.reduce((sum: number, s: any) => sum + s.outputs.length, 0);
+  console.log(
+    `  ${summary.sessions.length} inputs, ${totalOutputs} language outputs, ` +
+      `engine ${summary.engine}, capacity ${summary.capacity}\n`,
+  );
   for (const session of summary.sessions) {
     console.log(
       `  ${session.id.padEnd(9)} ${String(session.segments).padStart(3)} segs  ` +
@@ -128,6 +133,12 @@ async function main(): Promise<void> {
         `p95 ${String(session.latency.p95).padStart(5)}ms  first ${String(firstCaption.get(session.id) ?? 0).padStart(5)}ms  ` +
         `$${session.cost.usd.toFixed(4)}  rot ${session.rotations}`,
     );
+    for (const output of session.outputs) {
+      console.log(
+        `    ${DIM}-> ${output.language}  ${String(output.words).padStart(4)} words  ` +
+          `p50 ${String(output.latency.p50).padStart(5)}ms  $${output.costUsd.toFixed(4)}${RESET}`,
+      );
+    }
   }
 
   for (const id of ids) await fetch(`${API}/api/sessions/${id}/stop`, { method: 'POST' });

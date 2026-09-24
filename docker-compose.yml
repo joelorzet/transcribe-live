@@ -1,0 +1,23 @@
+services:
+  core-api:
+    build: .
+    ports:
+      - "8787:8787"
+      - "1935:1935"
+    environment:
+      GEMINI_API_KEY: ${GEMINI_API_KEY:?set GEMINI_API_KEY in your shell or a .env file}
+      RTMP_HOST: ${RTMP_HOST:-localhost}
+      MAX_CONCURRENT_SESSIONS: ${MAX_CONCURRENT_SESSIONS:-16}
+    volumes:
+      - ./config/glossaries:/app/config/glossaries
+    restart: unless-stopped
+
+  core-ui:
+    build: https://github.com/joelorzet/transcribe-live-ui.git
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: ${PUBLIC_API_URL:-http://localhost:8787}
+    depends_on:
+      - core-api
+    restart: unless-stopped
