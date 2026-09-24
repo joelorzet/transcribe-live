@@ -1,5 +1,6 @@
 import { LiveConnection } from '@modules/transcription/infrastructure/gemini/live-connection';
 import { toBcp47 } from '@shared/language/language';
+import type { LanguageCode } from '@shared/language/language';
 import type {
   TranscriptionEnginePort,
   TranscriptionStream,
@@ -12,6 +13,7 @@ export interface GeminiTranscriptionConfig {
   model: string;
   rotateSeconds: number;
   silenceDurationMs: number;
+  autoDetectLanguages: LanguageCode[];
   logger: LoggerPort;
 }
 
@@ -68,7 +70,10 @@ class RotatingTranscriptionStream implements TranscriptionStream {
     const connection = new LiveConnection({
       apiKey: this.#config.apiKey,
       model: this.#config.model,
-      languageCodes: sourceLanguage === 'auto' ? [] : [toBcp47(sourceLanguage)],
+      languageCodes:
+        sourceLanguage === 'auto'
+          ? (this.#options.autoDetectLanguages ?? this.#config.autoDetectLanguages).map(toBcp47)
+          : [toBcp47(sourceLanguage)],
       vocabulary,
       mode,
       silenceDurationMs: this.#options.silenceDurationMs ?? this.#config.silenceDurationMs,

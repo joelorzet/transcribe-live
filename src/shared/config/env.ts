@@ -1,6 +1,8 @@
 import { readFileSync, existsSync } from 'node:fs';
 import type { TranscriptionMode } from '@modules/transcription/application/ports/transcription-engine.port';
 import type { LogLevel } from '@shared/ports/system.port';
+import { parseLanguageList } from '@shared/language/language';
+import type { LanguageCode } from '@shared/language/language';
 import type { CostRates } from '@modules/sessions/application/cost-estimator.service';
 
 export function loadDotEnv(path = '.env'): void {
@@ -38,6 +40,7 @@ export interface AppConfig {
   transcriptionMode: TranscriptionMode;
   rotateSeconds: number;
   silenceDurationMs: number;
+  autoDetectLanguages: LanguageCode[];
   maxConcurrentSessions: number;
   contextWindow: number;
   costRates: CostRates;
@@ -62,6 +65,7 @@ export function loadConfig(): AppConfig {
     transcriptionMode: str('TRANSCRIPTION_MODE', 'VERBATIM') === 'SMART' ? 'SMART' : 'VERBATIM',
     rotateSeconds: num('SESSION_ROTATE_SECONDS', 480),
     silenceDurationMs: num('SILENCE_DURATION_MS', 400),
+    autoDetectLanguages: parseLanguageList(str('AUTO_DETECT_LANGUAGES', 'es,en,pt')),
     maxConcurrentSessions: num('MAX_CONCURRENT_SESSIONS', 16),
     contextWindow: num('CONTEXT_WINDOW', 3),
     costRates: {

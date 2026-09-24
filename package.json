@@ -13,7 +13,7 @@
     "smoke": "npm run build && node dist/scripts/smoke-gemini.js",
     "replay": "node dist/scripts/replay.js",
     "typecheck": "tsc --noEmit",
-    "test": "npm run build && node --test dist/test/",
+    "test": "tsc -p tsconfig.test.json && tsc-alias -p tsconfig.test.json && node --test \"dist/test/*.test.js\"",
     "ingest": "node dist/scripts/ingest.js"
   },
   "dependencies": {

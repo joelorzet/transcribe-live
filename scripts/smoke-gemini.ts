@@ -18,6 +18,7 @@ async function main(): Promise<void> {
     model: config.transcribeModel,
     rotateSeconds: config.rotateSeconds,
     silenceDurationMs: config.silenceDurationMs,
+    autoDetectLanguages: config.autoDetectLanguages,
     logger,
   });
 

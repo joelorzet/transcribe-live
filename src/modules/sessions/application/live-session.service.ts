@@ -3,6 +3,7 @@ import { Session, pcmBytesToMs, type SessionConfig, type SessionSnapshot } from 
 import { countWords, type TranscriptSegment, type Translation } from '@modules/transcription/domain/transcript.entity';
 import { toCustomVocabulary } from '@modules/glossary/domain/glossary.entity';
 import { parseLanguage, type LanguageCode } from '@shared/language/language';
+import { detectLanguage } from '@shared/language/language-detector';
 import { CapacityExceededError, SessionAlreadyExistsError, SessionNotFoundError } from '@modules/sessions/domain/session.errors';
 import type { TranscriptionEnginePort, TranscriptionMode, TranscriptionStream } from '@modules/transcription/application/ports/transcription-engine.port';
 import type { TranslatorPort } from '@modules/translation/application/ports/translator.port';
@@ -26,6 +27,7 @@ export interface LiveSessionServiceOptions {
   maxConcurrentSessions: number;
   transcriptionMode: TranscriptionMode;
   contextWindow: number;
+  autoDetectLanguages: LanguageCode[];
 }
 
 interface RunningSession {
@@ -166,10 +168,12 @@ export class LiveSessionService {
     }
   }
 
-  #resolveLanguage(session: Session, detected?: LanguageCode): LanguageCode {
+  #resolveLanguage(session: Session, text: string, detected?: LanguageCode): LanguageCode {
     if (detected) return detected;
     if (session.sourceLanguage !== 'auto') return session.sourceLanguage;
-    return 'es';
+
+    const candidates = this.#opts.autoDetectLanguages;
+    return detectLanguage(text, candidates) ?? candidates[0] ?? 'es';
   }
 
   #onInterim(sessionId: string, text: string, detected?: LanguageCode): void {
@@ -179,7 +183,7 @@ export class LiveSessionService {
       type: 'segment.interim',
       sessionId,
       text,
-      language: this.#resolveLanguage(running.session, detected),
+      language: this.#resolveLanguage(running.session, text, detected),
       at: this.#opts.clock.now(),
     });
   }
@@ -191,7 +195,7 @@ export class LiveSessionService {
     const { clock, transcripts, publisher } = this.#opts;
     const { session } = running;
     const now = clock.now();
-    const language = this.#resolveLanguage(session, detected);
+    const language = this.#resolveLanguage(session, text, detected);
     const latencyMs = Math.max(0, now - running.lastAudioAt);
 
     const segment: TranscriptSegment = {

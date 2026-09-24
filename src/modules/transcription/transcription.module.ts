@@ -19,6 +19,7 @@ import type { TranscriptStorePort } from '@modules/transcription/application/por
               model: config.transcribeModel,
               rotateSeconds: config.rotateSeconds,
               silenceDurationMs: config.silenceDurationMs,
+              autoDetectLanguages: config.autoDetectLanguages,
               logger,
             })
           : new MockTranscriptionEngine(),

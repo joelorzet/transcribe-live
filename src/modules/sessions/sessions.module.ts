@@ -65,6 +65,7 @@ import type { EventPublisherPort } from '@modules/events/application/ports/event
           maxConcurrentSessions: config.maxConcurrentSessions,
           transcriptionMode: config.transcriptionMode,
           contextWindow: config.contextWindow,
+          autoDetectLanguages: config.autoDetectLanguages,
         }),
       inject: [
         TRANSCRIPTION_ENGINE,
