@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Delete, Get, Inject, Param, Post } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, HttpCode, Inject, Param, Post } from '@nestjs/common';
 import { LiveSessionService, parseTargets } from '@modules/sessions/application/live-session.service';
 import { SessionNotFoundError } from '@modules/sessions/domain/session.errors';
 import type { SessionSnapshot } from '@modules/sessions/domain/session.entity';
@@ -61,8 +61,22 @@ export class SessionsController {
     return this.live.snapshot(session);
   }
 
-  @Delete(':id')
+  @Post(':id/stop')
+  @HttpCode(200)
   async stop(@Param('id') id: string): Promise<SessionSnapshot> {
     return this.live.stop(id);
+  }
+
+  @Delete('ended')
+  @HttpCode(200)
+  removeEnded(): { removed: number } {
+    return { removed: this.live.removeEnded() };
+  }
+
+  @Delete(':id')
+  @HttpCode(200)
+  async remove(@Param('id') id: string): Promise<{ removed: true }> {
+    await this.live.remove(id);
+    return { removed: true };
   }
 }

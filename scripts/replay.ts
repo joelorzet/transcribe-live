@@ -130,7 +130,7 @@ async function main(): Promise<void> {
     );
   }
 
-  for (const id of ids) await fetch(`${API}/api/sessions/${id}`, { method: 'DELETE' });
+  for (const id of ids) await fetch(`${API}/api/sessions/${id}/stop`, { method: 'POST' });
   viewer.close();
   process.exit(0);
 }

@@ -128,6 +128,28 @@ export class LiveSessionService {
     return snapshot;
   }
 
+  async remove(sessionId: string): Promise<void> {
+    const { sessions, transcripts, logger } = this.#opts;
+    if (!sessions.find(sessionId)) throw new SessionNotFoundError(sessionId);
+
+    await this.stop(sessionId).catch(() => undefined);
+    transcripts.clear(sessionId);
+    sessions.remove(sessionId);
+    logger.info('session removed', { sessionId });
+  }
+
+  removeEnded(): number {
+    const { sessions, transcripts } = this.#opts;
+    let removed = 0;
+    for (const session of sessions.list()) {
+      if (session.isActive) continue;
+      transcripts.clear(session.id);
+      sessions.remove(session.id);
+      removed += 1;
+    }
+    return removed;
+  }
+
   snapshot(session: Session): SessionSnapshot {
     session.viewers = this.#opts.publisher.subscriberCount(session.id);
     return session.toSnapshot(this.#opts.costEstimator.estimate(session));

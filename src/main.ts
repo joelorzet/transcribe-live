@@ -4,6 +4,7 @@ import type { Server } from 'node:http';
 import { AppModule } from './app.module';
 import { RealtimeGateway } from '@modules/realtime/interfaces/realtime.gateway';
 import { LiveSessionService } from '@modules/sessions/application/live-session.service';
+import { MediaIngestService } from '@modules/ingest/application/media-ingest.service';
 import { DomainExceptionFilter } from '@shared/errors/domain-exception.filter';
 import { APP_CONFIG, LOGGER } from '@shared/tokens';
 import type { AppConfig } from '@shared/config/env';
@@ -40,6 +41,7 @@ async function bootstrap(): Promise<void> {
 
   const shutdown = async (): Promise<void> => {
     clearInterval(stats);
+    app.get(MediaIngestService).shutdown();
     await live.shutdown();
     await app.close();
     process.exit(0);

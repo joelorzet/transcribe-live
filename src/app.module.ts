@@ -7,6 +7,7 @@ import { TranslationModule } from '@modules/translation/translation.module';
 import { SessionsModule } from '@modules/sessions/sessions.module';
 import { RealtimeModule } from '@modules/realtime/realtime.module';
 import { ExportModule } from '@modules/export/export.module';
+import { IngestModule } from '@modules/ingest/ingest.module';
 import { HealthModule } from '@modules/health/health.module';
 
 @Module({
@@ -19,6 +20,7 @@ import { HealthModule } from '@modules/health/health.module';
     SessionsModule,
     RealtimeModule,
     ExportModule,
+    IngestModule,
     HealthModule,
   ],
 })
