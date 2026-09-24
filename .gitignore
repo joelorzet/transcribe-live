@@ -1,9 +1,7 @@
 node_modules/
+dist/
 .env
 *.local
 .DS_Store
 recordings/
 transcripts/
-__pycache__/
-.claude/
-design-system/
