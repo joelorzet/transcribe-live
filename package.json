@@ -1,0 +1,26 @@
+{
+  "name": "transcribe-live",
+  "version": "1.0.0",
+  "description": "Open-source real-time transcription and ES/EN translation at scale for conferences.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "node --watch src/main.ts",
+    "start": "node src/main.ts",
+    "cli": "node src/presentation/cli/terminal-client.ts",
+    "replay": "node scripts/replay.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test test/"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/ws": "^8.5.13",
+    "typescript": "^5.7.2"
+  }
+}
