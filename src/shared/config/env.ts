@@ -41,6 +41,9 @@ export interface AppConfig {
   rotateSeconds: number;
   silenceDurationMs: number;
   autoDetectLanguages: LanguageCode[];
+  rtmpHost: string;
+  rtmpBasePort: number;
+  rtmpWaitSeconds: number;
   maxConcurrentSessions: number;
   contextWindow: number;
   costRates: CostRates;
@@ -66,6 +69,9 @@ export function loadConfig(): AppConfig {
     rotateSeconds: num('SESSION_ROTATE_SECONDS', 480),
     silenceDurationMs: num('SILENCE_DURATION_MS', 400),
     autoDetectLanguages: parseLanguageList(str('AUTO_DETECT_LANGUAGES', 'es,en,pt')),
+    rtmpHost: str('RTMP_HOST', ''),
+    rtmpBasePort: num('RTMP_BASE_PORT', 1935),
+    rtmpWaitSeconds: num('RTMP_WAIT_SECONDS', 600),
     maxConcurrentSessions: num('MAX_CONCURRENT_SESSIONS', 16),
     contextWindow: num('CONTEXT_WINDOW', 3),
     costRates: {

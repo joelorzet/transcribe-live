@@ -1,4 +1,5 @@
-import { BadRequestException, Body, Controller, Delete, Get, Inject, Param, Post } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Inject, Param, Post, Req } from '@nestjs/common';
+import type { Request } from 'express';
 import { MediaIngestService } from '@modules/ingest/application/media-ingest.service';
 import type { IngestStatus } from '@modules/ingest/application/media-ingest.service';
 import { SessionNotFoundError } from '@modules/sessions/domain/session.errors';
@@ -11,7 +12,7 @@ interface StartIngestBody {
   durationSeconds?: number;
 }
 
-const ALLOWED_PROTOCOLS = new Set(['http:', 'https:']);
+const ALLOWED_PROTOCOLS = new Set(['http:', 'https:', 'rtmp:', 'rtmps:', 'udp:', 'tcp:']);
 
 @Controller('api/sessions/:id/ingest')
 export class IngestController {
@@ -43,6 +44,13 @@ export class IngestController {
       startSeconds: toPositiveNumber(body.startSeconds),
       durationSeconds: toPositiveNumber(body.durationSeconds),
     });
+  }
+
+  @Post('rtmp')
+  async startRtmp(@Param('id') id: string, @Req() request: Request): Promise<IngestStatus> {
+    if (!this.sessions.find(id)) throw new SessionNotFoundError(id);
+    const host = (request.headers.host ?? 'localhost').replace(/:\d+$/, '');
+    return this.ingest.startRtmp(id, host);
   }
 
   @Get()

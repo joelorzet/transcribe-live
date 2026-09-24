@@ -11,6 +11,26 @@ export interface MediaStreamOptions {
   startSeconds?: number;
   durationSeconds?: number;
   ffmpegPath?: string;
+  listen?: boolean;
+  listenTimeoutSeconds?: number;
+}
+
+export const STREAM_PROTOCOLS = ['rtmp:', 'rtmps:', 'udp:', 'tcp:'] as const;
+
+export function isStreamUrl(source: string): boolean {
+  try {
+    return (STREAM_PROTOCOLS as readonly string[]).includes(new URL(source).protocol);
+  } catch {
+    return false;
+  }
+}
+
+export function buildRtmpListenUrl(port: number, trackId: string): string {
+  return `rtmp://0.0.0.0:${port}/live/${trackId}`;
+}
+
+export function buildRtmpPushUrl(host: string, port: number, trackId: string): string {
+  return `rtmp://${host}:${port}/live/${trackId}`;
 }
 
 export function isYouTubeUrl(source: string): boolean {
@@ -55,8 +75,12 @@ export function openPcmStream(options: MediaStreamOptions): PcmStream {
   const { source, realtime = true, startSeconds, durationSeconds, ffmpegPath = 'ffmpeg' } = options;
 
   const args: string[] = ['-hide_banner', '-loglevel', 'error'];
+  if (options.listen) {
+    args.push('-listen', '1', '-timeout', String(options.listenTimeoutSeconds ?? 600));
+  }
   if (startSeconds !== undefined) args.push('-ss', String(startSeconds));
-  if (realtime) args.push('-re');
+  // A live push already arrives in real time; -re would double-pace it.
+  if (realtime && !options.listen) args.push('-re');
   args.push('-i', source);
   if (durationSeconds !== undefined) args.push('-t', String(durationSeconds));
   args.push(
