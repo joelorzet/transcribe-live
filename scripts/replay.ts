@@ -1,6 +1,7 @@
 import WebSocket from 'ws';
 import { basename } from 'node:path';
 import { readWav, assertLiveApiFormat } from '@shared/audio/wav';
+import { formatUsd } from '@shared/format/money';
 
 const API = process.env['API_URL'] ?? 'http://localhost:8787';
 const WS = API.replace(/^http/, 'ws');
@@ -33,11 +34,16 @@ function parseTracks(argv: string[]): Track[] {
 }
 
 async function createSession(track: Track, index: number): Promise<string> {
+  const id = `track-${index + 1}`;
+  await fetch(`${API}/api/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(
+    () => undefined,
+  );
+
   const response = await fetch(`${API}/api/sessions`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
-      id: `track-${index + 1}`,
+      id,
       title: `Track ${index + 1} - ${track.title}`,
       sourceLanguage: track.sourceLanguage,
       targetLanguages: track.targetLanguages,
@@ -88,12 +94,16 @@ function watchControlRoom(labels: Map<string, string>, firstCaption: Map<string,
 
     if (event.type === 'segment.interim') {
       if (!firstCaption.has(id)) firstCaption.set(id, Date.now() - startedAt);
-      console.log(`${color}[${label}]${RESET} ${DIM}~ ${String(event.text).slice(-70)}${RESET}`);
+      console.log(`${color}[${label}]${RESET} ${DIM}input (partial): ${String(event.text).slice(-60)}${RESET}`);
     } else if (event.type === 'segment.final') {
       if (!firstCaption.has(id)) firstCaption.set(id, Date.now() - startedAt);
-      console.log(`${color}[${label}]${RESET} ${event.segment.text} ${DIM}(+${event.segment.latencyMs}ms)${RESET}`);
+      console.log(
+        `${color}[${label}]${RESET} ${DIM}input:${RESET} ${event.segment.text} ${DIM}(+${event.segment.latencyMs}ms)${RESET}`,
+      );
     } else if (event.type === 'segment.translated') {
-      console.log(`${color}[${label}]${RESET} ${DIM}-> [${event.translation.language}]${RESET} ${event.translation.text}`);
+      console.log(
+        `${color}[${label}]${RESET} ${DIM}output ${event.translation.language}:${RESET} ${event.translation.text}`,
+      );
     }
   });
   return socket;
@@ -108,7 +118,10 @@ async function main(): Promise<void> {
   for (const [index, track] of tracks.entries()) {
     const id = await createSession(track, index);
     ids.push(id);
-    labels.set(id, `${track.sourceLanguage}->${track.targetLanguages} ${track.title}`.slice(0, 28));
+    labels.set(
+      id,
+      `in ${track.sourceLanguage} | out ${track.targetLanguages} | ${track.title}`.slice(0, 34),
+    );
   }
 
   const firstCaption = new Map<string, number>();
@@ -121,24 +134,33 @@ async function main(): Promise<void> {
 
   console.log(`\n${DIM}all tracks finished in ${wall}s${RESET}\n`);
   const summary = (await (await fetch(`${API}/api/sessions`)).json()) as any;
-  const totalOutputs = summary.sessions.reduce((sum: number, s: any) => sum + s.outputs.length, 0);
+  const mine = summary.sessions.filter((s: any) => ids.includes(s.id));
+  const totalOutputs = mine.reduce((sum: number, s: any) => sum + s.outputs.length, 0);
+  const captioned = mine.filter((s: any) => s.segments > 0).length;
   console.log(
-    `  ${summary.sessions.length} inputs, ${totalOutputs} language outputs, ` +
-      `engine ${summary.engine}, capacity ${summary.capacity}\n`,
+    `  ${mine.length} inputs, ${totalOutputs} language outputs, ` +
+      `${captioned}/${mine.length} produced captions, engine ${summary.engine}\n`,
   );
-  for (const session of summary.sessions) {
+  for (const session of mine) {
+    const first = firstCaption.get(session.id) ?? 0;
     console.log(
-      `  ${session.id.padEnd(9)} ${String(session.segments).padStart(3)} segs  ` +
-        `${String(session.words).padStart(4)} words  p50 ${String(session.latency.p50).padStart(5)}ms  ` +
-        `p95 ${String(session.latency.p95).padStart(5)}ms  first ${String(firstCaption.get(session.id) ?? 0).padStart(5)}ms  ` +
-        `$${session.cost.usd.toFixed(4)}  rot ${session.rotations}`,
+      `  ${session.id.padEnd(9)} input ${String(session.sourceLanguage).padEnd(5)}` +
+        `${String(session.segments).padStart(2)} segments  ${String(session.words).padStart(4)} words  ` +
+        `p50 ${String(session.latency.p50).padStart(5)}ms  p95 ${String(session.latency.p95).padStart(5)}ms  ` +
+        `first caption ${String(first).padStart(5)}ms  reconnects ${session.rotations}`,
+    );
+    console.log(
+      `${DIM}            cost  audio ${formatUsd(session.cost.audioUsd)}  ` +
+        `+ translation ${formatUsd(session.cost.translationUsd)}  ` +
+        `= total ${formatUsd(session.cost.usd)}${RESET}`,
     );
     for (const output of session.outputs) {
       console.log(
-        `    ${DIM}-> ${output.language}  ${String(output.words).padStart(4)} words  ` +
-          `p50 ${String(output.latency.p50).padStart(5)}ms  $${output.costUsd.toFixed(4)}${RESET}`,
+        `${DIM}            output ${output.language}  ${String(output.words).padStart(4)} words  ` +
+          `p50 ${String(output.latency.p50).padStart(5)}ms  translation ${formatUsd(output.costUsd)}${RESET}`,
       );
     }
+    console.log('');
   }
 
   for (const id of ids) await fetch(`${API}/api/sessions/${id}/stop`, { method: 'POST' });

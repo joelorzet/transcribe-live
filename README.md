@@ -82,20 +82,18 @@ languages, and prints captions as they arrive:
 ```
 replaying 3 tracks concurrently against http://localhost:8787
 
-[es to en,pt es]     ~ Buenos días a todos y bienvenidos a Nerdearla. Hoy vamos a hablar de
-[es to en,pt es]     Buenos días a todos y bienvenidos a Nerdearla. Hoy vamos a hablar de
-                     observabilidad en Kubernetes a escala. (+12ms)
-[es to en,pt es]     -> [en] Good morning everyone and welcome to Nerdearla. Today we are
-                     going to talk about observability in Kubernetes.
-[en to es,pt en]     -> [es] Bienvenidos a todos a esta sesión sobre ingeniería de plataformas.
+[in es | out en,pt | es]  input: Buenos días a todos y bienvenidos a Nerdearla. Hoy vamos
+                          a hablar de observabilidad en Kubernetes a escala. (+12ms)
+[in es | out en,pt | es]  output en: Good morning everyone and welcome to Nerdearla. Today
+                          we are going to talk about observability in Kubernetes at scale.
+[in es | out en,pt | es]  output pt: Bom dia a todos e bem-vindos à Nerdearla.
 
-  3 inputs, 6 language outputs, engine gemini, capacity 16
+  3 inputs, 6 language outputs, 3/3 produced captions, engine gemini
 
-  track-3     3 segs    28 words  p50   770ms  p95  2679ms  first  1470ms  $0.0005
-    -> es    34 words  p50   804ms  $0.0001
-    -> pt    33 words  p50   843ms  $0.0001
-  track-2     3 segs    32 words  p50  1738ms  p95  6630ms  first  1381ms  $0.0005
-  track-1     3 segs    35 words  p50  1291ms  p95  5942ms  first  1319ms  $0.0006
+  track-1   input es    2 segments    34 words  p50   755ms  p95  1290ms  first caption  1525ms  reconnects 0
+            cost  audio $0.000256  + translation $0.00025  = total $0.000506
+            output en    32 words  p50   755ms  translation $0.00015
+            output pt    34 words  p50   931ms  translation $0.0000994
 ```
 
 Point it at your own files, or repeat them to push concurrency higher:
@@ -164,7 +162,8 @@ by guessing a name.
 | 3 | 6 | free | All captioned. First caption 1.3–1.5s, p50 0.6–1.7s. Node at 70 MB RSS, under 1% CPU. |
 | 5 | 5 | free | All five opened. One retry, one automatic fallback to the secondary speech model. |
 | 6 | 12 | free | **Degraded.** One input silent, three slow to start. `RESOURCE_EXHAUSTED` from the free tier. |
-| 6 | 12 | paid | 5 of 6 captioned, p50 0.8–3.6s, total spend $0.0021 for the run. Two streams went silent and were recovered automatically. |
+| 6 | 12 | paid | 5 of 6 captioned, p50 0.8–3.6s, $0.0021 for the run. Two streams went silent and were recovered automatically. |
+| 3 | 6 | paid | **3/3 on three consecutive runs.** p50 0.75–0.96s, about $0.0005 per track. Five silent streams recovered across the three runs. |
 
 The honest summary: **the process is not the limit.** One Node instance fanned six inputs into
 twelve language outputs at 70 MB and negligible CPU, because it is mostly moving bytes. The
@@ -172,8 +171,12 @@ limits that actually bite are upstream: free tier quota first, then occasional s
 refused connections from the speech API, all of which are handled rather than hidden.
 
 The remaining gap at six inputs is one source that produced no captions before its clip
-ended. The bundled samples are 17 to 21 seconds, which is shorter than the silence detector
-needs; a real talk gives it room to work.
+ended. The bundled samples are 17 to 21 seconds, which is tight for the silence detector; a
+real talk gives it room to work.
+
+Cost is reported at full precision rather than rounded. A single output often costs a few
+hundredths of a cent, and rounding those to four decimals printed `$0.0000` for work that had
+happened and stopped the parts adding up to the whole.
 
 ### What happens when the upstream misbehaves
 

@@ -37,7 +37,8 @@ export interface LiveSessionServiceOptions {
   inputRegistry: InputRegistry;
 }
 
-const SILENT_AFTER_MS = 20000;
+const SILENT_AFTER_MS = 12000;
+const NO_FINAL_AFTER_MS = 20000;
 const AUDIO_RECENT_MS = 5000;
 const MAX_SILENT_RECOVERIES = 3;
 
@@ -45,6 +46,7 @@ interface RunningSession {
   session: Session;
   stream: TranscriptionStream;
   lastCaptionAt: number;
+  lastFinalAt: number;
   silentRecoveries: number;
   lastAudioAt: number;
   queue: Promise<void>;
@@ -146,6 +148,7 @@ export class LiveSessionService {
       stream,
       lastAudioAt: clock.now(),
       lastCaptionAt: clock.now(),
+      lastFinalAt: clock.now(),
       silentRecoveries: 0,
       queue: Promise.resolve(),
       recentText: [],
@@ -303,21 +306,31 @@ export class LiveSessionService {
       if (running.stream.closed) continue;
 
       const audioIsFlowing = now - running.lastAudioAt < AUDIO_RECENT_MS;
+      if (!audioIsFlowing) continue;
+
       const silentFor = now - running.lastCaptionAt;
-      if (!audioIsFlowing || silentFor < SILENT_AFTER_MS) continue;
+      const withoutFinalFor = now - running.lastFinalAt;
+
+      // Two ways a stream stalls: nothing at all, or endless interim text that
+      // never settles into a final. Only finals are translated, so a stream
+      // stuck on interims starves every output language while looking alive.
+      const stalled =
+        silentFor >= SILENT_AFTER_MS ? silentFor : withoutFinalFor >= NO_FINAL_AFTER_MS ? withoutFinalFor : 0;
+      if (stalled === 0) continue;
 
       if (running.silentRecoveries >= MAX_SILENT_RECOVERIES) {
         running.session.noteError(
-          `No captions for ${Math.round(silentFor / 1000)}s while audio kept arriving.`,
+          `No captions for ${Math.round(stalled / 1000)}s while audio kept arriving.`,
         );
         continue;
       }
 
       running.silentRecoveries += 1;
       running.lastCaptionAt = now;
+      running.lastFinalAt = now;
       logger.warn('audio is flowing but no captions arrived; reconnecting the speech stream', {
         sessionId: id,
-        silentForMs: silentFor,
+        silentForMs: stalled,
         attempt: running.silentRecoveries,
       });
 
@@ -372,6 +385,7 @@ export class LiveSessionService {
     const { session } = running;
     const now = clock.now();
     running.lastCaptionAt = now;
+    running.lastFinalAt = now;
     running.silentRecoveries = 0;
     const language = this.#resolveLanguage(session, text, detected);
     const latencyMs = Math.max(0, now - running.lastAudioAt);

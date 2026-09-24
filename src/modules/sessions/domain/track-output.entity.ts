@@ -44,7 +44,7 @@ export class TrackOutput {
       inputTokens: this.inputTokens,
       outputTokens: this.outputTokens,
       latency: this.latency.snapshot(),
-      costUsd: Number(costUsd.toFixed(4)),
+      costUsd,
     };
   }
 }

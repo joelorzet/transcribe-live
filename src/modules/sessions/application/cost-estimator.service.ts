@@ -42,9 +42,9 @@ export class CostEstimator {
       audioSeconds: Number(session.audioSeconds.toFixed(1)),
       translationInputTokens: inputTokens,
       translationOutputTokens: outputTokens,
-      audioUsd: Number(audioUsd.toFixed(4)),
-      translationUsd: Number(translationUsd.toFixed(4)),
-      usd: Number((audioUsd + translationUsd).toFixed(4)),
+      audioUsd,
+      translationUsd,
+      usd: audioUsd + translationUsd,
     };
   }
 
