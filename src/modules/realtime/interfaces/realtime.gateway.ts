@@ -16,6 +16,12 @@ import { EVENT_PUBLISHER, LOGGER, SESSION_REPOSITORY, TRANSCRIPT_STORE } from '@
 const INGEST_PATH = '/ws/ingest';
 const VIEW_PATH = '/ws/view';
 const REPLAY_SEGMENTS = 25;
+/**
+ * Telemetry is for the production team, not the room. A caption consumer still
+ * needs the occasional snapshot for the output list and the playback position,
+ * but at a pace that keeps the socket about subtitles.
+ */
+const VIEWER_STATS_INTERVAL_MS = 5000;
 
 @Injectable()
 export class RealtimeGateway implements OnApplicationShutdown {
@@ -99,10 +105,20 @@ export class RealtimeGateway implements OnApplicationShutdown {
       }
     }
 
+    const isControlRoom = topic === CONTROL_ROOM;
+    let lastStatsAt = 0;
+
     const unsubscribe = this.publisher.subscribe(topic, (event) => {
       if (language && event.type === 'segment.translated' && event.translation.language !== language) {
         return;
       }
+
+      if (event.type === 'session.stats' && !isControlRoom) {
+        const now = Date.now();
+        if (now - lastStatsAt < VIEWER_STATS_INTERVAL_MS) return;
+        lastStatsAt = now;
+      }
+
       send(event);
     });
     socket.on('close', () => unsubscribe());

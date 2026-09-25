@@ -15,6 +15,7 @@ import type { TranslatorPort } from '@modules/translation/application/ports/tran
 import type { SessionRepositoryPort } from '@modules/sessions/application/ports/session.repository.port';
 import type { TranscriptStorePort } from '@modules/transcription/application/ports/transcript-store.port';
 import type { GlossaryRepositoryPort } from '@modules/glossary/application/ports/glossary.repository.port';
+import { CONTROL_ROOM } from '@modules/events/application/ports/event-publisher.port';
 import type { EventPublisherPort } from '@modules/events/application/ports/event-publisher.port';
 import type { ClockPort, LoggerPort } from '@shared/ports/system.port';
 import type { CostEstimator } from '@modules/sessions/application/cost-estimator.service';
@@ -303,11 +304,20 @@ export class LiveSessionService {
   }
 
   publishStats(): void {
+    // Watchdogs run whether or not anyone is watching: a talk losing its
+    // captions has to be caught even with the control room closed.
     this.#reapDeadStreams();
     this.#recoverSilentStreams();
-    for (const session of this.#opts.sessions.list()) {
+
+    const { publisher, sessions } = this.#opts;
+    const controlRoomIsOpen = publisher.subscriberCount(CONTROL_ROOM) > 0;
+
+    for (const session of sessions.list()) {
       if (!session.isActive) continue;
-      this.#opts.publisher.publish(session.id, { type: 'session.stats', session: this.snapshot(session) });
+      // Building a snapshot walks every output and prices it. Nobody listening
+      // means nobody to tell, so skip the work entirely.
+      if (!controlRoomIsOpen && publisher.subscriberCount(session.id) === 0) continue;
+      publisher.publish(session.id, { type: 'session.stats', session: this.snapshot(session) });
     }
   }
 
