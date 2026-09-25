@@ -3,6 +3,7 @@ import type { Request } from 'express';
 import { MediaIngestService } from '@modules/ingest/application/media-ingest.service';
 import type { IngestStatus } from '@modules/ingest/application/media-ingest.service';
 import { SessionNotFoundError } from '@modules/sessions/domain/session.errors';
+import { LiveSessionService } from '@modules/sessions/application/live-session.service';
 import { SESSION_REPOSITORY } from '@shared/tokens';
 import type { SessionRepositoryPort } from '@modules/sessions/application/ports/session.repository.port';
 
@@ -18,12 +19,24 @@ const ALLOWED_PROTOCOLS = new Set(['http:', 'https:', 'rtmp:', 'rtmps:', 'udp:',
 export class IngestController {
   constructor(
     private readonly ingest: MediaIngestService,
+    private readonly live: LiveSessionService,
     @Inject(SESSION_REPOSITORY) private readonly sessions: SessionRepositoryPort,
   ) {}
 
+  /**
+   * Attaching a source to a stopped track is a request to run it again. Without
+   * this, opening an endpoint on a stopped room appeared to work and then threw
+   * every chunk away, because the session was no longer accepting audio.
+   */
+  async #ensureRunning(id: string): Promise<void> {
+    const session = this.sessions.find(id);
+    if (!session) throw new SessionNotFoundError(id);
+    if (!session.isActive) await this.live.restart(id);
+  }
+
   @Post()
   async start(@Param('id') id: string, @Body() body: StartIngestBody): Promise<IngestStatus> {
-    if (!this.sessions.find(id)) throw new SessionNotFoundError(id);
+    await this.#ensureRunning(id);
 
     const source = body.source?.trim();
     if (!source) throw new BadRequestException('source is required');
@@ -48,7 +61,7 @@ export class IngestController {
 
   @Post('rtmp')
   async startRtmp(@Param('id') id: string, @Req() request: Request): Promise<IngestStatus> {
-    if (!this.sessions.find(id)) throw new SessionNotFoundError(id);
+    await this.#ensureRunning(id);
     const host = (request.headers.host ?? 'localhost').replace(/:\d+$/, '');
     return this.ingest.startRtmp(id, host);
   }

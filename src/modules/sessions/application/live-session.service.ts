@@ -43,9 +43,15 @@ const NO_FINAL_AFTER_MS = 20000;
 const AUDIO_RECENT_MS = 5000;
 const MAX_SILENT_RECOVERIES = 3;
 
+const MAX_PENDING_BYTES = 32000 * 4;
+
 interface RunningSession {
   session: Session;
-  stream: TranscriptionStream;
+  /** Opened on the first audio chunk, not when the track is created. */
+  stream: TranscriptionStream | null;
+  attaching: boolean;
+  pending: Buffer[];
+  pendingBytes: number;
   lastCaptionAt: number;
   lastFinalAt: number;
   silentRecoveries: number;
@@ -80,12 +86,19 @@ export class LiveSessionService {
     sessions.add(session);
     logger.child({ sessionId: id }).info('starting session', { title: session.title });
 
-    try {
-      await this.#attachStream(session);
-    } catch (error) {
-      sessions.remove(id);
-      throw error;
-    }
+    this.#running.set(id, {
+      session,
+      stream: null,
+      attaching: false,
+      pending: [],
+      pendingBytes: 0,
+      lastAudioAt: clock.now(),
+      lastCaptionAt: clock.now(),
+      lastFinalAt: clock.now(),
+      silentRecoveries: 0,
+      queue: Promise.resolve(),
+      recentText: [],
+    });
 
     const snapshot = this.snapshot(session);
     publisher.publish(id, { type: 'session.started', session: snapshot });
@@ -104,7 +117,19 @@ export class LiveSessionService {
 
     logger.child({ sessionId }).info('restarting session');
     session.prepareForRestart();
-    await this.#attachStream(session);
+    this.#running.set(sessionId, {
+      session,
+      stream: null,
+      attaching: false,
+      pending: [],
+      pendingBytes: 0,
+      lastAudioAt: this.#opts.clock.now(),
+      lastCaptionAt: this.#opts.clock.now(),
+      lastFinalAt: this.#opts.clock.now(),
+      silentRecoveries: 0,
+      queue: Promise.resolve(),
+      recentText: [],
+    });
 
     const snapshot = this.snapshot(session);
     publisher.publish(sessionId, { type: 'session.started', session: snapshot });
@@ -139,31 +164,59 @@ export class LiveSessionService {
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       log.error('could not open the speech engine', { error: reason });
+      const entry = this.#running.get(id);
+      if (entry) entry.attaching = false;
       session.markFailed(reason, clock.now());
       throw new EngineUnavailableError(reason);
     }
 
+    const running = this.#running.get(id);
+    if (!running) {
+      await stream.close().catch(() => undefined);
+      return;
+    }
+
+    running.stream = stream;
+    running.attaching = false;
     session.markLive(clock.now());
-    this.#running.set(id, {
-      session,
-      stream,
-      lastAudioAt: clock.now(),
-      lastCaptionAt: clock.now(),
-      lastFinalAt: clock.now(),
-      silentRecoveries: 0,
-      queue: Promise.resolve(),
-      recentText: [],
-    });
+
+    for (const chunk of running.pending) stream.write(chunk);
+    running.pending = [];
+    running.pendingBytes = 0;
+
+    log.info('speech stream opened on first audio');
   }
 
   ingest(sessionId: string, pcm: Buffer): void {
     const running = this.#running.get(sessionId);
     if (!running) throw new SessionNotFoundError(sessionId);
-    if (running.stream.closed) return;
 
     running.session.audioMs += pcmBytesToMs(pcm.byteLength);
     running.lastAudioAt = this.#opts.clock.now();
-    running.stream.write(pcm);
+
+    const stream = running.stream;
+    if (stream) {
+      if (!stream.closed) stream.write(pcm);
+      return;
+    }
+
+    // First audio for this track. Hold a short window while the speech stream
+    // is dialled, so opening late costs latency rather than words.
+    running.pending.push(pcm);
+    running.pendingBytes += pcm.byteLength;
+    while (running.pendingBytes > MAX_PENDING_BYTES && running.pending.length > 0) {
+      running.pendingBytes -= running.pending.shift()?.byteLength ?? 0;
+    }
+
+    if (!running.attaching) {
+      running.attaching = true;
+      void this.#attachStream(running.session).catch((error: unknown) => {
+        this.#opts.logger.error('could not open the speech stream for arriving audio', {
+          sessionId,
+          error: String(error),
+        });
+      });
+    }
   }
 
   async stop(sessionId: string): Promise<SessionSnapshot> {
@@ -175,7 +228,7 @@ export class LiveSessionService {
     if (running) {
       this.#running.delete(sessionId);
       await running.queue.catch(() => {});
-      await running.stream.close().catch((error: unknown) => {
+      await running.stream?.close().catch((error: unknown) => {
         logger.warn('error closing stream', { sessionId, error: String(error) });
       });
     }
@@ -227,7 +280,7 @@ export class LiveSessionService {
     const running = this.#running.get(sessionId);
     session.sourceLanguage = sourceLanguage;
 
-    if (running) {
+    if (running?.stream) {
       await running.stream.reconfigure({ sourceLanguage });
       session.rotations += 1;
     }
@@ -260,7 +313,7 @@ export class LiveSessionService {
     session.glossaryId = glossary.id;
 
     const running = this.#running.get(sessionId);
-    if (running) {
+    if (running?.stream) {
       await running.stream.reconfigure({ vocabulary: toCustomVocabulary(glossary) });
       session.rotations += 1;
     }
@@ -326,7 +379,7 @@ export class LiveSessionService {
     const now = clock.now();
 
     for (const [id, running] of this.#running) {
-      if (running.stream.closed) continue;
+      if (!running.stream || running.stream.closed) continue;
 
       const audioIsFlowing = now - running.lastAudioAt < AUDIO_RECENT_MS;
       if (!audioIsFlowing) continue;
@@ -358,7 +411,7 @@ export class LiveSessionService {
       });
 
       void running.stream
-        .reconfigure({ sourceLanguage: running.session.sourceLanguage })
+        ?.reconfigure({ sourceLanguage: running.session.sourceLanguage })
         .catch((error: unknown) => {
           logger.error('silent stream recovery failed', { sessionId: id, error: String(error) });
         });
@@ -368,7 +421,8 @@ export class LiveSessionService {
   #reapDeadStreams(): void {
     const { clock, logger, publisher } = this.#opts;
     for (const [id, running] of this.#running) {
-      if (!running.stream.closed) continue;
+      // A track with no stream yet is idle and waiting for audio, not dead.
+      if (!running.stream || !running.stream.closed) continue;
       this.#running.delete(id);
       running.session.markFailed(
         running.session.error ?? 'the speech stream closed unexpectedly',
