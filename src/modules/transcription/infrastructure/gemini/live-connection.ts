@@ -81,6 +81,12 @@ export class LiveConnection {
         const wasReady = this.#ready;
         this.#ready = false;
         const text = reason.toString('utf8');
+        // A connection we retired during a rotation closed because we asked it
+        // to. Reporting that as an engine error marked healthy talks as broken.
+        if (this.#closing) {
+          succeed();
+          return;
+        }
         failFast(new Error(`closed before ready: ${code} ${text}`));
         if (!this.#closing && wasReady) this.#opts.onClosed(code, text);
       });

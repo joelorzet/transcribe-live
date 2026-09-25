@@ -20,6 +20,12 @@ export interface GeminiTranscriptionConfig {
 
 const MAX_PENDING_BYTES = 32000 * 4;
 const DRAIN_MS = 1500;
+/**
+ * 100 ms of 16 kHz mono 16-bit PCM. The Live API expects frames about this
+ * size; a pipe hands us whatever ffmpeg happens to flush, and sending those
+ * bursts straight through leaves the recogniser silent.
+ */
+const FRAME_BYTES = 3200;
 
 export class GeminiTranscriptionEngine implements TranscriptionEnginePort {
   readonly name = 'gemini-live';
@@ -189,6 +195,12 @@ class RotatingTranscriptionStream implements TranscriptionStream {
 
   write(pcm: Buffer): void {
     if (this.#closed) return;
+    for (let offset = 0; offset < pcm.byteLength; offset += FRAME_BYTES) {
+      this.#writeFrame(pcm.subarray(offset, offset + FRAME_BYTES));
+    }
+  }
+
+  #writeFrame(pcm: Buffer): void {
     const connection = this.#active;
     if (connection?.ready) {
       connection.write(pcm);

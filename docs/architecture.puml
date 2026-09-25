@@ -1,0 +1,95 @@
+@startuml architecture
+!theme plain
+skinparam backgroundColor #0F172A
+skinparam defaultFontName Helvetica
+skinparam defaultFontColor #F8FAFC
+skinparam ArrowColor #94A3B8
+skinparam ArrowFontColor #94A3B8
+skinparam rectangle {
+  BackgroundColor #1E293B
+  BorderColor #334155
+  FontColor #F8FAFC
+}
+skinparam database {
+  BackgroundColor #1E293B
+  BorderColor #334155
+  FontColor #F8FAFC
+}
+skinparam cloud {
+  BackgroundColor #26344B
+  BorderColor #475569
+  FontColor #F8FAFC
+}
+skinparam note {
+  BackgroundColor #26344B
+  BorderColor #22C55E
+  FontColor #F8FAFC
+}
+
+title Transcribe Live — one input, many live subtitle streams
+
+rectangle "PRODUCTION" as prod #0F172A {
+  rectangle "OBS / vMix" as obs
+  rectangle "Public link\n(YouTube, HLS, file)" as url
+  rectangle "Control room\nlatency, spend, errors" as control
+}
+
+rectangle "CORE-API (one Node process)" as api {
+  rectangle "RTMP relay\none port, key routed" as rtmp
+  rectangle "Media ingest\nyt-dlp + ffmpeg" as ingest
+  rectangle "**Source**\nspoken language + glossary" as source
+  rectangle "Transcription\nrotation, failover, watchdog" as asr
+  rectangle "Output EN" as outEn
+  rectangle "Output PT" as outPt
+  rectangle "Event bus" as bus
+}
+
+cloud "Gemini\ntranscribe-live" as gemini
+cloud "Gemini\nflash (chain)" as flash
+
+rectangle "AUDIENCE" as room #0F172A {
+  rectangle "Phone\n/live" as phone
+  rectangle "OBS overlay\nburned-in subtitles" as overlay
+  rectangle "Their own system\nSSE / WebSocket / live.txt" as third
+}
+
+obs --> rtmp : "rtmp://host:1935/live\n+ stream key"
+url --> ingest : pull
+rtmp --> source : "16 kHz mono PCM"
+ingest --> source : "16 kHz mono PCM"
+
+source --> asr
+asr <--> gemini : "audio in,\ntranscript out"
+asr --> source : final segment
+
+source --> outEn : translate once
+source --> outPt : translate once
+outEn <--> flash
+outPt <--> flash
+
+outEn --> bus
+outPt --> bus
+source --> bus : original
+
+bus --> phone : "one language per subscriber"
+bus --> overlay
+bus --> third
+source --> control : "telemetry, 1 Hz"
+
+note right of bus
+  **Fan out, not fan work**
+  Five viewers reading English
+  share one translation.
+  Cost scales with languages,
+  never with audience size.
+end note
+
+note bottom of asr
+  Survives the upstream:
+  rotation past the ~10 min cap,
+  model failover, and a watchdog
+  for a stream that goes silent
+  while audio keeps arriving.
+end note
+
+@enduml

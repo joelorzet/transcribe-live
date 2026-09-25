@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import {
+  openYouTubePcmStream,
   buildRtmpListenUrl,
   buildRtmpPushUrl,
   isYouTubeUrl,
@@ -133,13 +134,18 @@ export class MediaIngestService {
     }
 
     const log = this.logger.child({ sessionId: trackId, component: 'ingest' });
-    const mediaUrl = await this.#resolve(source, log);
-    const stream = openPcmStream({
-      source: mediaUrl,
-      realtime: true,
-      startSeconds: options.startSeconds,
-      durationSeconds: options.durationSeconds,
-    });
+    const stream = isYouTubeUrl(source)
+      ? openYouTubePcmStream({
+          source,
+          startSeconds: options.startSeconds,
+          durationSeconds: options.durationSeconds,
+        })
+      : openPcmStream({
+          source: await this.#resolve(source, log),
+          realtime: true,
+          startSeconds: options.startSeconds,
+          durationSeconds: options.durationSeconds,
+        });
 
     const entry = this.#track(trackId, {
       kind: 'pull',

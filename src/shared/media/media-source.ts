@@ -4,6 +4,8 @@ import { Readable } from 'node:stream';
 
 export const PCM_SAMPLE_RATE = 16000;
 export const PCM_CHANNELS = 1;
+/** How much of a talk to pull when no duration is given: three hours. */
+const DEFAULT_SECTION_SECONDS = 3 * 60 * 60;
 
 export interface MediaStreamOptions {
   source: string;
@@ -69,6 +71,52 @@ export interface PcmStream {
   pcm: Readable;
   process: ChildProcessWithoutNullStreams;
   stop: () => void;
+}
+
+/**
+ * Streams a YouTube talk by letting yt-dlp fetch it and piping the bytes into
+ * ffmpeg. Handing ffmpeg the resolved media URL instead gets a 403: those URLs
+ * are signed for the client that asked for them.
+ */
+export function openYouTubePcmStream(options: MediaStreamOptions & { ytDlpPath?: string }): PcmStream {
+  const { source, startSeconds, durationSeconds, ffmpegPath = 'ffmpeg', ytDlpPath = 'yt-dlp' } = options;
+
+  const ytArgs = ['-f', 'bestaudio', '--no-playlist', '--quiet', '--no-warnings'];
+  if (startSeconds !== undefined || durationSeconds !== undefined) {
+    const from = Math.max(0, Math.floor(startSeconds ?? 0));
+    // The range has to be bounded. An open ended section is not streamable, so
+    // ffmpeg reading it from a pipe reports invalid data and gives up.
+    const to = from + Math.ceil(durationSeconds ?? DEFAULT_SECTION_SECONDS);
+    ytArgs.push('--download-sections', `*${from}-${to}`);
+  }
+  ytArgs.push('-o', '-', source);
+
+  const fetcher = spawn(ytDlpPath, ytArgs);
+  const child = spawn(ffmpegPath, [
+    '-hide_banner', '-loglevel', 'error',
+    '-re',
+    '-i', 'pipe:0',
+    '-vn',
+    '-ac', String(PCM_CHANNELS),
+    '-ar', String(PCM_SAMPLE_RATE),
+    '-f', 's16le',
+    '-acodec', 'pcm_s16le',
+    'pipe:1',
+  ]);
+
+  fetcher.stdout.pipe(child.stdin);
+  fetcher.stdin.end();
+  fetcher.on('error', () => child.kill('SIGKILL'));
+  child.stdin.on('error', () => undefined);
+
+  return {
+    pcm: child.stdout,
+    process: child,
+    stop: () => {
+      fetcher.kill('SIGKILL');
+      child.kill('SIGKILL');
+    },
+  };
 }
 
 export function openPcmStream(options: MediaStreamOptions): PcmStream {

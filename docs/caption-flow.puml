@@ -1,0 +1,84 @@
+@startuml caption-flow
+!theme plain
+skinparam backgroundColor #0F172A
+skinparam defaultFontName Helvetica
+skinparam defaultFontColor #F8FAFC
+skinparam sequence {
+  ArrowColor #94A3B8
+  ArrowFontColor #94A3B8
+  LifeLineBorderColor #334155
+  LifeLineBackgroundColor #1E293B
+  ParticipantBackgroundColor #1E293B
+  ParticipantBorderColor #334155
+  ParticipantFontColor #F8FAFC
+  ActorBackgroundColor #1E293B
+  ActorBorderColor #22C55E
+  ActorFontColor #F8FAFC
+  GroupBackgroundColor #26344B
+  GroupBorderColor #475569
+  GroupFontColor #F8FAFC
+  DividerBackgroundColor #26344B
+  DividerFontColor #F8FAFC
+}
+skinparam note {
+  BackgroundColor #26344B
+  BorderColor #22C55E
+  FontColor #F8FAFC
+}
+
+title From spoken word to subtitle
+
+actor "Speaker" as spk
+participant "Ingest\nffmpeg" as ing
+participant "Source" as src
+participant "Gemini\ntranscribe-live" as asr
+participant "Gemini\nflash" as tr
+participant "Event bus" as bus
+actor "Reader (EN)" as en
+actor "Reader (PT)" as pt
+
+spk -> ing : audio
+ing -> src : 16 kHz mono PCM,\n100 ms frames
+
+== while speaking ==
+src -> asr : stream audio
+asr --> src : interim text
+src -> bus : interim
+bus --> en : partial caption
+note right of en
+  ~1.4 s to first words
+end note
+
+== at a pause ==
+asr --> src : **final** segment
+src -> bus : final (original)
+bus --> en : original text
+
+par one translation per language, not per viewer
+  src -> tr : translate(final, EN, glossary)
+  tr --> src : English
+  src -> bus : translated EN
+  bus --> en : English subtitle
+else
+  src -> tr : translate(final, PT, glossary)
+  tr --> src : Portuguese
+  src -> bus : translated PT
+  bus --> pt : Portuguese subtitle
+end
+
+note over bus
+  Every extra viewer is one more
+  subscriber on an existing stream.
+  10 viewers, 2 translations, $0.00058.
+end note
+
+== if the upstream misbehaves ==
+asr -[#F59E0B]-> src : goAway, or 10 min cap
+src -[#F59E0B]-> asr : dial replacement,\nswap, drain the old one
+note right of src
+  Audio is never written to two
+  connections, so nothing is
+  transcribed twice.
+end note
+
+@enduml
