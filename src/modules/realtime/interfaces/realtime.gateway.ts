@@ -160,6 +160,12 @@ function toAudienceView(snapshot: SessionSnapshot): AudienceView {
     hasAudio: Boolean(snapshot.input),
     waitingForPublisher: Boolean(snapshot.input?.waitingForPublisher),
     watchUrl: snapshot.watchUrl ?? publicSourceUrl(snapshot.input?.source),
+    // An OBS fed talk has no public link, but we can hand back the stream it is
+    // sending us.
+    streamPath:
+      snapshot.input?.kind === 'rtmp' && !snapshot.input.waitingForPublisher
+        ? `/api/sessions/${encodeURIComponent(snapshot.id)}/stream.flv`
+        : undefined,
   };
 }
 

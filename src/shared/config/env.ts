@@ -43,6 +43,7 @@ export interface AppConfig {
   autoDetectLanguages: LanguageCode[];
   rtmpHost: string;
   rtmpPort: number;
+  rtmpHttpPort: number;
   maxConcurrentSessions: number;
   contextWindow: number;
   costRates: CostRates;
@@ -71,6 +72,7 @@ export function loadConfig(): AppConfig {
     autoDetectLanguages: parseLanguageList(str('AUTO_DETECT_LANGUAGES', 'es,en,pt')),
     rtmpHost: str('RTMP_HOST', ''),
     rtmpPort: num('RTMP_PORT', 1935),
+    rtmpHttpPort: num('RTMP_HTTP_PORT', 8000),
     maxConcurrentSessions: num('MAX_CONCURRENT_SESSIONS', 16),
     contextWindow: num('CONTEXT_WINDOW', 3),
     costRates: {

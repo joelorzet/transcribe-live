@@ -20,6 +20,8 @@ export interface AudienceView {
   hasAudio: boolean;
   waitingForPublisher: boolean;
   watchUrl?: string;
+  /** Set when the talk is being pushed to us and can be played back. */
+  streamPath?: string;
 }
 
 export type SessionEvent =

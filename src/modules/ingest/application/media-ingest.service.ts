@@ -242,6 +242,15 @@ export class MediaIngestService {
     this.logger.info('ingest stopped', { sessionId: trackId });
   }
 
+  /** Local HTTP-FLV address for a track that has a publisher connected. */
+  playbackUrl(trackId: string): string | undefined {
+    const entry = this.#running.get(trackId);
+    if (!entry || entry.kind !== 'rtmp' || entry.waitingForPublisher || !entry.streamKey) {
+      return undefined;
+    }
+    return this.relay.playbackUrl(entry.streamKey);
+  }
+
   status(trackId: string): IngestStatus | undefined {
     const entry = this.#running.get(trackId);
     return entry ? this.#toStatus(entry) : undefined;

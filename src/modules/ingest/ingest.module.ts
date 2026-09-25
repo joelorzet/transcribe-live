@@ -16,7 +16,7 @@ function buildIngestService(
   registry: InputRegistry,
 ): MediaIngestService {
   let service: MediaIngestService;
-  const relay = new RtmpRelay(config.rtmpPort, logger, {
+  const relay = new RtmpRelay(config.rtmpPort, config.rtmpHttpPort, logger, {
     onPublish: (trackId, pullUrl) => service.attachPublisher(trackId, pullUrl),
     onUnpublish: (trackId) => service.detachPublisher(trackId),
   });

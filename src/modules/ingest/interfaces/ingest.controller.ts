@@ -1,5 +1,6 @@
-import { BadRequestException, Body, Controller, Delete, Get, Inject, Param, Post, Req } from '@nestjs/common';
-import type { Request } from 'express';
+import { BadRequestException, Body, Controller, Delete, Get, Inject, NotFoundException, Param, Post, Req, Res } from '@nestjs/common';
+import type { Request, Response } from 'express';
+import { Readable } from 'node:stream';
 import { MediaIngestService } from '@modules/ingest/application/media-ingest.service';
 import type { IngestStatus } from '@modules/ingest/application/media-ingest.service';
 import { SessionNotFoundError } from '@modules/sessions/domain/session.errors';
@@ -64,6 +65,31 @@ export class IngestController {
     await this.#ensureRunning(id);
     const host = (request.headers.host ?? 'localhost').replace(/:\d+$/, '');
     return this.ingest.startRtmp(id, host);
+  }
+
+  /**
+   * Pipes the published stream out as HTTP-FLV so a browser can watch what
+   * production is sending. Proxied rather than linked directly: the media
+   * server addresses streams by their publish key, and handing that to the
+   * room would let anyone publish into the talk.
+   */
+  @Get('stream.flv')
+  async playback(@Param('id') id: string, @Res() response: Response): Promise<void> {
+    const url = this.ingest.playbackUrl(id);
+    if (!url) throw new NotFoundException('This track has no live video');
+
+    const upstream = await fetch(url).catch(() => null);
+    if (!upstream?.ok || !upstream.body) {
+      throw new NotFoundException('The live video is not available yet');
+    }
+
+    response.setHeader('content-type', 'video/x-flv');
+    response.setHeader('cache-control', 'no-store');
+    response.setHeader('access-control-allow-origin', '*');
+
+    const stream = Readable.fromWeb(upstream.body as Parameters<typeof Readable.fromWeb>[0]);
+    stream.pipe(response);
+    response.on('close', () => stream.destroy());
   }
 
   @Get()

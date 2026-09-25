@@ -16,15 +16,24 @@ export class RtmpRelay {
 
   constructor(
     private readonly port: number,
+    private readonly httpPort: number,
     private readonly logger: LoggerPort,
     private readonly handlers: RtmpRelayHandlers,
   ) {}
+
+  /** Where the published stream can be read back as HTTP-FLV, on this host. */
+  playbackUrl(streamKey: string): string {
+    return `http://127.0.0.1:${this.httpPort}/${RTMP_APP}/${streamKey}.flv`;
+  }
 
   start(): void {
     if (this.#server) return;
 
     this.#server = new NodeMediaServer({
       rtmp: { port: this.port },
+      // Serves the published stream back as HTTP-FLV so the room can watch what
+      // production is sending, rather than only hearing it transcribed.
+      http: { port: this.httpPort },
       logger: { level: 'error' },
       store: { path: '.nms-store' },
     });
@@ -55,7 +64,7 @@ export class RtmpRelay {
     });
 
     this.#server.run();
-    this.logger.info('rtmp relay listening', { port: this.port, app: RTMP_APP });
+    this.logger.info('rtmp relay listening', { port: this.port, httpPort: this.httpPort, app: RTMP_APP });
   }
 
   register(trackId: string): string {

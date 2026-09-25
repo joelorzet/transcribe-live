@@ -542,7 +542,15 @@ export class LiveSessionService {
             translation,
           });
         } catch (error) {
-          logger.warn('translate failed', { sessionId: session.id, target, error: String(error) });
+          const reason = error instanceof Error ? error.message : String(error);
+          logger.warn('translate failed', { sessionId: session.id, target, error: reason });
+          // A caption that never arrives is worse than a visible failure. Quota
+          // exhaustion in particular looks like nothing happening at all.
+          session.noteError(
+            /\b429\b|RESOURCE_EXHAUSTED/.test(reason)
+              ? `Translation quota exhausted, so ${target} subtitles have stopped.`
+              : `Translation into ${target} is failing: ${reason.slice(0, 120)}`,
+          );
         }
       }),
     );
