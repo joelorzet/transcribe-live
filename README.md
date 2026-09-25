@@ -12,6 +12,19 @@ The control room UI lives in a separate repository:
 
 ---
 
+## How it fits together
+
+![Architecture](docs/architecture.png)
+
+One audio input becomes many independent subtitle streams. A talk is transcribed once; each
+output language is translated once and fanned out to everyone reading it, so cost scales with
+languages rather than with audience size.
+
+![Caption flow](docs/caption-flow.png)
+
+Diagram sources are [`docs/architecture.puml`](docs/architecture.puml) and
+[`docs/caption-flow.puml`](docs/caption-flow.puml). Render with `plantuml -tpng docs/*.puml`.
+
 ## Quick start
 
 ### Docker, both services
