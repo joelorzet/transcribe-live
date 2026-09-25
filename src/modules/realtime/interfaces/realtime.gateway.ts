@@ -5,6 +5,8 @@ import type { WebSocket } from 'ws';
 import type { Server } from 'node:http';
 import { LiveSessionService } from '@modules/sessions/application/live-session.service';
 import { CONTROL_ROOM } from '@modules/events/application/ports/event-publisher.port';
+import type { AudienceView } from '@modules/events/application/ports/event-publisher.port';
+import type { SessionSnapshot } from '@modules/sessions/domain/session.entity';
 import { isLanguageCode } from '@shared/language/language';
 import type { LanguageCode } from '@shared/language/language';
 import type { EventPublisherPort, SessionEvent } from '@modules/events/application/ports/event-publisher.port';
@@ -97,7 +99,15 @@ export class RealtimeGateway implements OnApplicationShutdown {
       if (socket.readyState === socket.OPEN) socket.send(JSON.stringify(payload));
     };
 
-    send({ type: 'hello', topic, language, sessions: this.live.listSnapshots() });
+    const isControlRoom = topic === CONTROL_ROOM;
+
+    const snapshots = this.live.listSnapshots();
+    if (isControlRoom) {
+      send({ type: 'hello', topic, sessions: snapshots });
+    } else {
+      const mine = snapshots.find((snapshot) => snapshot.id === topic);
+      send({ type: 'hello', topic, language, session: mine ? toAudienceView(mine) : null });
+    }
 
     if (topic !== CONTROL_ROOM) {
       for (const segment of this.transcripts.recent(topic, REPLAY_SEGMENTS)) {
@@ -105,7 +115,6 @@ export class RealtimeGateway implements OnApplicationShutdown {
       }
     }
 
-    const isControlRoom = topic === CONTROL_ROOM;
     let lastStatsAt = 0;
 
     const unsubscribe = this.publisher.subscribe(topic, (event) => {
@@ -113,10 +122,13 @@ export class RealtimeGateway implements OnApplicationShutdown {
         return;
       }
 
-      if (event.type === 'session.stats' && !isControlRoom) {
+      // The room gets a slim view of the talk, never the production numbers.
+      if ((event.type === 'session.stats' || event.type === 'session.ended') && !isControlRoom) {
         const now = Date.now();
-        if (now - lastStatsAt < VIEWER_STATS_INTERVAL_MS) return;
+        if (event.type === 'session.stats' && now - lastStatsAt < VIEWER_STATS_INTERVAL_MS) return;
         lastStatsAt = now;
+        send({ type: 'session.view', session: toAudienceView(event.session) });
+        return;
       }
 
       send(event);
@@ -131,4 +143,22 @@ export class RealtimeGateway implements OnApplicationShutdown {
       server.close();
     }
   }
+}
+
+function toAudienceView(snapshot: SessionSnapshot): AudienceView {
+  const outputs = snapshot.outputs ?? [];
+  const typical = outputs.find((output) => output.latency.p50 > 0)?.latency.p50;
+
+  return {
+    id: snapshot.id,
+    title: snapshot.title,
+    status: snapshot.status,
+    spokenLanguage: snapshot.sourceLanguage,
+    languages: outputs.map((output) => output.language),
+    positionSeconds: snapshot.input?.positionSeconds,
+    captionLagMs: typical || snapshot.latency.p50 || 1500,
+    hasAudio: Boolean(snapshot.input),
+    waitingForPublisher: Boolean(snapshot.input?.waitingForPublisher),
+    watchUrl: snapshot.watchUrl,
+  };
 }
