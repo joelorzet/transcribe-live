@@ -159,6 +159,21 @@ function toAudienceView(snapshot: SessionSnapshot): AudienceView {
     captionLagMs: typical || snapshot.latency.p50 || 1500,
     hasAudio: Boolean(snapshot.input),
     waitingForPublisher: Boolean(snapshot.input?.waitingForPublisher),
-    watchUrl: snapshot.watchUrl,
+    watchUrl: snapshot.watchUrl ?? publicSourceUrl(snapshot.input?.source),
   };
+}
+
+/**
+ * When a talk is pulled from a public link, that link is also what the room
+ * should watch. An RTMP endpoint is ours and never goes out to viewers, so only
+ * http(s) sources are passed along.
+ */
+function publicSourceUrl(source: string | undefined): string | undefined {
+  if (!source) return undefined;
+  try {
+    const { protocol } = new URL(source);
+    return protocol === 'http:' || protocol === 'https:' ? source : undefined;
+  } catch {
+    return undefined;
+  }
 }
